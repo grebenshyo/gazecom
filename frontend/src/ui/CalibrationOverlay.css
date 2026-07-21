@@ -1,0 +1,48 @@
+.gz-calib-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2000;
+}
+
+.gz-calib-instruction {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 0.95em;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 2001;
+}
+
+.gz-calib-instruction small {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.gz-calib-marker {
+  position: fixed;
+  width: 24px;
+  height: 24px;
+  background: #ffd400;
+  border: 2px solid #000;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+  padding: 0;
+  z-index: 2002;
+  box-shadow: 0 0 0 4px rgba(255, 212, 0, 0.3);
+  animation: gz-calib-pulse 1s ease-in-out infinite;
+}
+
+@keyframes gz-calib-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(255, 212, 0, 0.3); }
+  50% { box-shadow: 0 0 0 12px rgba(255, 212, 0, 0); }
+}

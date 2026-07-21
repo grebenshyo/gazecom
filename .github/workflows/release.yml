@@ -1,0 +1,101 @@
+name: Release Build
+
+# Freezes the desktop app for macOS and Windows. Push a version tag
+# (e.g. `git tag v0.3.0 && git push origin v0.3.0`) to build and attach the
+# artifacts to a GitHub Release. `workflow_dispatch` builds the artifacts on
+# demand without publishing a release (useful for smoke-testing the freeze).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Needed by the release job to create the Release and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: gazeCOM-macos-arm64
+          - os: macos-15-intel
+            artifact: gazeCOM-macos-intel
+          - os: windows-latest
+            artifact: gazeCOM-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.17.1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      # Installs the backend's runtime deps + PyInstaller (the `build` extra).
+      # bash runs on all three runners (Git Bash on Windows) so the extras
+      # syntax is quoted consistently.
+      - name: Install backend + PyInstaller
+        shell: bash
+        run: pip install "./backend[build]"
+
+      - name: Freeze desktop app
+        shell: bash
+        run: |
+          python -m PyInstaller gazecom.spec --noconfirm
+          cp LICENSE dist/gazeCOM/LICENSE
+          cp THIRD_PARTY_NOTICES.md dist/gazeCOM/THIRD_PARTY_NOTICES.md
+
+      # Both platforms ship the onedir dist/gazeCOM/. macOS gets the
+      # gazeCOM.command Terminal launcher placed inside it; Windows launches
+      # gazeCOM.exe (console) directly.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cp scripts/gazeCOM.command dist/gazeCOM/gazeCOM.command
+          chmod +x dist/gazeCOM/gazeCOM.command
+          cd dist && zip -ry "../${{ matrix.artifact }}.zip" gazeCOM
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist/gazeCOM -DestinationPath ${{ matrix.artifact }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true

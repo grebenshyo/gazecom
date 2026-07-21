@@ -1,0 +1,759 @@
+/**
+ * Control panel styling — verbatim port of legacy css/styles.css:123-355.
+ * Same metrics, colors, drag-handle bar, brand label, and section gaps.
+ */
+
+.gz-control-panel {
+  position: fixed;
+  /* Scale the complete UI consistently with browser zoom. The offsets and
+     max-height are expressed in pre-zoom units so its visible anchoring and
+     available screen area remain unchanged. */
+  zoom: var(--gz-ui-scale, 0.8);
+  top: 80px;
+  right: 20px;
+  width: 320px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  padding: 15px;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  user-select: none;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+.gz-control-panel textarea,
+.gz-control-panel input[type="text"],
+.gz-control-panel input[type="number"] {
+  user-select: text;
+}
+
+/* Drag handle (legacy .panel-drag-handle). Blank by request — no title
+   text, no grip dots, just the colored bar with the minimize button. */
+.gz-panel-header {
+  cursor: move;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin: -15px -15px 10px -15px;
+  padding: 8px 15px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 14px;
+  touch-action: none;
+}
+
+body.gz-theme-dark .gz-panel-header {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Minimize button (legacy .panel-close-button). Naked text "−"/"+",
+   no border, no pill background. */
+.gz-panel-minimize {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-color);
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  padding: 0;
+  line-height: 1;
+}
+
+.gz-panel-minimize:hover {
+  opacity: 1;
+}
+
+/* Workflow pool row — one per pinned workflow. Label + slider + weight
+   readout + remove button on one line. Slider takes the leftover
+   horizontal space; the readout has a fixed width so the layout doesn't
+   jitter as numbers change digit count. */
+.gz-pool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+}
+
+.gz-pool-row__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-color);
+  opacity: 0.85;
+}
+
+/* Compact integer input for the weight. Hide the browser spinners so it
+   visually matches `.gz-numinput__input` (used by the canvas-bounds
+   inputs) but stays inline-sized for the row. */
+.gz-pool-row__weight-input {
+  flex: 0 0 52px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  font-family: inherit;
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.gz-pool-row__weight-input::-webkit-outer-spin-button,
+.gz-pool-row__weight-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gz-pool-row__pct {
+  flex: 0 0 auto;
+  color: var(--text-color);
+  opacity: 0.6;
+}
+
+.gz-pool-row__remove {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--text-color);
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 4px;
+  transition: opacity 0.15s;
+}
+
+.gz-pool-row__remove:hover {
+  opacity: 1;
+}
+
+/* Active-pick highlight for workflow pool rows — color + bold the label
+   with the Workflow section hue when this is the most recent pick. */
+.gz-pool-row--active .gz-pool-row__label {
+  color: var(--gz-section-accent, var(--button-bg));
+  font-weight: 600;
+  opacity: 1;
+}
+
+.gz-workflow-steps {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  color: var(--text-color);
+  font-size: 0.82em;
+}
+
+.gz-workflow-steps input {
+  width: 52px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.gz-workflow-steps input:focus {
+  border-color: var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-workflow-steps input::-webkit-outer-spin-button,
+.gz-workflow-steps input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Prompt slot row — wrapper around a textarea, with a weight badge,
+   manual ✨ enhance, auto-enhance cycle, and optional × remove button
+   overlaid in the corners. */
+.gz-prompt-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gz-prompt-slot__input-wrap {
+  position: relative;
+}
+
+.gz-prompt-slot__textarea {
+  width: 100%;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  /* Text uses the full textarea — controls (weight badge + ✨ + ×) sit
+     as overlays in the corners. Each control has its own opaque
+     backdrop so text passing underneath gets masked cleanly rather
+     than fighting the glyphs for legibility. */
+  padding: 5px 8px;
+  font-size: 0.9em;
+  font-family: var(--body-font);
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 60px;
+  display: block;
+}
+
+.gz-prompt-slot__textarea:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Active-pick highlight: subtle accent border around the slot whose
+   text was just used in a generation. */
+.gz-prompt-slot--active .gz-prompt-slot__textarea {
+  border-color: var(--gz-section-accent, var(--button-bg));
+  box-shadow: inset 0 0 0 1px var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-prompt-slot__derived {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.035);
+  color: var(--text-color);
+  font-family: var(--body-font);
+  font-size: 0.82em;
+  line-height: 1.35;
+  opacity: 0.62;
+  resize: vertical;
+  min-height: 46px;
+  box-sizing: border-box;
+  outline: none;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.gz-prompt-slot__derived::placeholder {
+  color: var(--text-color);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.gz-prompt-slot__derived:focus {
+  border-color: var(--gz-control-accent, var(--button-bg));
+}
+
+body.gz-theme-dark .gz-prompt-slot__derived {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gz-prompt-settings-textarea {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gz-prompt-settings-textarea__label {
+  color: var(--text-color);
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gz-prompt-settings-textarea__input {
+  width: 100%;
+  min-height: 60px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  font-family: var(--body-font);
+  font-size: 0.9em;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.gz-bbox-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gz-bbox-controls .gz-btn {
+  flex: 0 0 auto;
+}
+
+.gz-ui-scale-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.gz-ui-scale-options .gz-btn {
+  width: 100%;
+}
+
+.gz-ui-scale-options .gz-btn--selected {
+  background: var(--gz-section-accent, var(--button-bg));
+  border-color: var(--gz-section-accent, var(--button-bg));
+  color: var(--button-text);
+  opacity: 1;
+}
+
+/* Section identity colors — one hue per collapsible section header so the
+   panel's menus can be told apart at a glance. Applied as a title tint +
+   matching underline; the body content stays neutral. */
+.gz-section--key-prompting { --gz-section-accent: #6f7f21; }
+.gz-section--key-workflow { --gz-section-accent: #bb4c8a; }
+.gz-section--key-settings { --gz-section-accent: #159f7c; }
+.gz-section--key-advanced { --gz-section-accent: #b87500; }
+.gz-section--key-view { --gz-section-accent: #5d7599; }
+
+body.gz-theme-dark .gz-section--key-prompting { --gz-section-accent: #cbd98a; }
+body.gz-theme-dark .gz-section--key-workflow { --gz-section-accent: #f0add0; }
+body.gz-theme-dark .gz-section--key-settings { --gz-section-accent: #8ddfc9; }
+body.gz-theme-dark .gz-section--key-advanced { --gz-section-accent: #eeb86a; }
+body.gz-theme-dark .gz-section--key-view { --gz-section-accent: #bfd0e8; }
+
+.gz-section--collapsible[class*="gz-section--key-"] {
+  --gz-control-accent: var(--gz-section-accent);
+  --gz-control-accent-hover: var(--gz-section-accent);
+}
+
+.gz-section--collapsible[class*="gz-section--key-"] > .gz-section__title {
+  color: var(--gz-section-accent, var(--text-color));
+  border-bottom-color: var(--gz-section-accent, var(--border-color));
+  opacity: 0.85;
+}
+
+.gz-section--collapsible[class*="gz-section--key-"] > .gz-section__title:hover {
+  opacity: 1;
+}
+
+/* Slot controls clustered in the bottom-left, anchored as
+   one flex strip. Leaves the textarea's resize grip (bottom-right)
+   untouched so the user can drag to expand the slot freely. The
+   cluster is overlaid on the textarea — opaque backdrops on each
+   control mask any text directly beneath. */
+.gz-prompt-slot__controls {
+  position: absolute;
+  bottom: 8px;
+  left: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Weight badge: small integer input. */
+.gz-prompt-slot__weight {
+  width: 46px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  font-family: inherit;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  box-sizing: border-box;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.gz-prompt-slot__weight::-webkit-outer-spin-button,
+.gz-prompt-slot__weight::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gz-prompt-slot__weight:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Common skin for the icon buttons. Wrapped <span> holds the
+   glyph so we can give it tight metrics independent of the button's
+   own padding — fixes the prior "✨ half outside the button" issue
+   where the emoji's default line-height pushed it out of frame. */
+.gz-prompt-slot__enhance,
+.gz-prompt-slot__auto-enhance,
+.gz-prompt-slot__vision,
+.gz-prompt-slot__remove {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  cursor: pointer;
+  border-radius: 3px;
+  box-sizing: border-box;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+}
+
+.gz-prompt-slot__enhance > span,
+.gz-prompt-slot__auto-enhance > span,
+.gz-prompt-slot__vision > span,
+.gz-prompt-slot__remove > span {
+  display: block;
+  line-height: 1;
+  font-size: 13px;
+}
+
+.gz-prompt-slot__enhance,
+.gz-prompt-slot__auto-enhance,
+.gz-prompt-slot__vision {
+  opacity: 0.85;
+}
+
+.gz-prompt-slot__enhance:hover:not(:disabled),
+.gz-prompt-slot__auto-enhance:hover,
+.gz-prompt-slot__vision:hover {
+  opacity: 1;
+  background: var(--border-color);
+}
+
+.gz-prompt-slot__enhance:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.gz-prompt-slot__auto-enhance--off {
+  opacity: 0.5;
+}
+
+.gz-prompt-slot__auto-enhance--send {
+  border-color: var(--gz-control-accent, var(--button-bg));
+  color: var(--gz-control-accent, var(--button-bg));
+}
+
+.gz-prompt-slot__auto-enhance--evolve {
+  border-color: #b87500;
+  color: #b87500;
+}
+
+.gz-prompt-slot__vision--off {
+  opacity: 0.5;
+}
+
+.gz-prompt-slot__vision--on {
+  border-color: #2f7fd3;
+  color: #2f7fd3;
+}
+
+.gz-prompt-slot__remove {
+  opacity: 0.7;
+}
+
+.gz-prompt-slot__remove:hover {
+  opacity: 1;
+}
+
+/* Sum-validation warning shown below the pool rows when the user's
+   weights don't add up to 100. Mild orange-yellow so it's noticeable
+   without screaming; reads as guidance rather than error. */
+.gz-pool-warning {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  font-size: 0.8em;
+  line-height: 1.35;
+  color: #8a6d00;
+  background: rgba(255, 200, 60, 0.12);
+  border: 1px solid rgba(255, 200, 60, 0.4);
+  border-radius: 3px;
+}
+
+body.gz-theme-dark .gz-pool-warning {
+  color: #ffd970;
+  background: rgba(255, 200, 60, 0.08);
+}
+
+/* Cluster of three circle buttons (theme + settings + help) at the bottom
+   of the panel body — verbatim layout port of legacy `.help-container`
+   (backup/v1 css/styles.css:594-600), now with a live patches-since-clear
+   counter occupying the leftover space on the left. */
+.gz-panel-utilities {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Pushes the counter to the left edge of the row; subsequent flex
+   children (the button cluster) remain right-aligned via the parent's
+   justify-content. Tabular-nums prevents width jitter as the count
+   crosses digit boundaries (9→10, 99→100). */
+.gz-panel-counter {
+  margin-right: auto;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-color);
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Brand label — bottom-right of panel (legacy .panel-brand). */
+.gz-panel-brand {
+  margin-top: auto;
+  align-self: flex-end;
+  font-size: 0.75em;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: var(--dropdown-text);
+  opacity: 0.7;
+  pointer-events: none;
+  letter-spacing: 0.05em;
+}
+
+/* control-group container (legacy .control-group). */
+.gz-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* By default section titles are screen-reader-only — legacy behaviour for
+   sections that don't need a visible header. The collapsible variant
+   below promotes the title to a clickable header bar. */
+.gz-section__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Collapsible variant — the title becomes a button-styled header that
+   toggles the section body, with a +/− affordance on the right. */
+.gz-section--collapsible > .gz-section__title {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 4px 0;
+  clip: auto;
+  overflow: visible;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-color);
+  opacity: 0.7;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+  border-bottom: 1px solid var(--border-color);
+  user-select: none;
+}
+
+.gz-section--collapsible > .gz-section__title:hover {
+  opacity: 1;
+}
+
+.gz-section__caret {
+  font-weight: 400;
+  font-size: 1.1em;
+  line-height: 1;
+  margin-left: 8px;
+  opacity: 0.6;
+}
+
+/* Title + optional header action (e.g. the Prompting cog) grouped on the
+   left of a collapsible header; the caret stays pushed to the right by
+   the header button's space-between. */
+.gz-section__title-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Small cog affordance in a section header (Prompting → prompt settings).
+   Rendered as a role="button" span (not a nested <button>) that stops
+   propagation, so clicking it reveals the controls without collapsing
+   the section. */
+.gz-section__cog {
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+
+.gz-section__cog:hover {
+  opacity: 1;
+}
+
+.gz-section--collapsed > .gz-section__body {
+  display: none;
+}
+
+.gz-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Inline group: a row of checkboxes + labels (legacy .control-inline-group). */
+.gz-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gz-row label {
+  font-weight: normal;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.gz-matte-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.gz-matte-row[aria-disabled="true"] {
+  opacity: 0.55;
+}
+
+.gz-matte-row__color {
+  flex: 0 0 34px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--dropdown-bg);
+  cursor: pointer;
+}
+
+.gz-matte-row__hex {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  font-family: inherit;
+  font-size: 0.9em;
+  outline: none;
+}
+
+.gz-matte-row__hex:focus {
+  border-color: var(--gz-control-accent, var(--button-bg));
+}
+
+.gz-matte-row__sample {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--dropdown-bg);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.gz-matte-row__sample:hover:not(:disabled) {
+  background: var(--border-color);
+}
+
+.gz-matte-row__color:disabled,
+.gz-matte-row__hex:disabled,
+.gz-matte-row__sample:disabled {
+  cursor: not-allowed;
+}
+
+/* Section "label:" headers like "Modes:" (legacy used a plain <label> at
+   the top of a group). Used for Modes block. */
+.gz-group-label {
+  font-size: 0.9em;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.gz-textarea {
+  width: 100%;
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 5px 8px;
+  font-size: 0.9em;
+  font-family: var(--body-font);
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.gz-empty {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* Image control row (legacy .image-control-group) — dropdown grows, button
+   stays compact. */
+.gz-image-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.gz-image-row .gz-dropdown {
+  flex: 1;
+}
+
+/* Output / Comp fit-toggle bar (legacy .fit-toggle-container). */
+.gz-fit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+}
+
+.gz-fit-row .toggle-label {
+  opacity: 0.7;
+}

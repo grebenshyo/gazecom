@@ -1,0 +1,63 @@
+/**
+ * Number input — visually matches .gz-dropdown so labelled rows in the
+ * control panel stack cleanly. Same label box on the left, input fills
+ * the rest of the bordered group.
+ */
+
+.gz-numinput {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--dropdown-bg);
+  overflow: hidden;
+  font-size: 0.9em;
+}
+
+.gz-numinput__label {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  font-size: 9px;
+  color: var(--text-color);
+  font-weight: 500;
+  width: 100px;
+  text-align: center;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.02);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+body.gz-theme-dark .gz-numinput__label {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gz-numinput__input {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--dropdown-text);
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  /* Hide the browser spinners — they're noisy and the user has step/min/max
+     enforcement via onChange/onBlur. */
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.gz-numinput__input::-webkit-outer-spin-button,
+.gz-numinput__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gz-numinput__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,39 @@
+.gz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+.gz-modal {
+  background: var(--bg-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 24px 28px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.gz-modal h2 {
+  margin: 0 0 12px;
+  font-weight: 400;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+}
+
+.gz-modal p {
+  margin: 0 0 12px;
+  line-height: 1.5;
+  font-size: 0.95em;
+}
+
+.gz-modal__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  gap: 12px;
+}

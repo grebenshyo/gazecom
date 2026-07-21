@@ -1,0 +1,79 @@
+/**
+ * Slider — verbatim port of legacy input[type="range"] rules
+ * (css/styles.css:366-428). 6px track, 16px thumb, accent color.
+ */
+
+.gz-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9em;
+}
+
+.gz-slider__label {
+  color: var(--text-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.9em;
+}
+
+.gz-slider__value {
+  color: var(--gz-control-accent, var(--button-bg));
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.gz-slider__input {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border-color);
+  border-radius: 3px;
+  outline: none;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.gz-slider__input:hover {
+  opacity: 1;
+}
+
+.gz-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--gz-control-accent, var(--button-bg));
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    transform 0.2s;
+}
+
+.gz-slider__input::-webkit-slider-thumb:hover {
+  background: var(--gz-control-accent-hover, var(--button-hover-bg));
+  transform: scale(1.1);
+}
+
+.gz-slider__input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--gz-control-accent, var(--button-bg));
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.gz-slider__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gz-slider__input:disabled::-webkit-slider-thumb {
+  background: var(--border-color);
+  cursor: not-allowed;
+}

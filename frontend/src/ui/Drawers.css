@@ -1,0 +1,256 @@
+/* Filled circle, same treatment as .gz-theme-toggle and legacy
+   css/styles.css:601-616 .help-button. The cluster wrapper that holds
+   the triggers + theme toggle lives in ControlPanel as
+   `.gz-panel-utilities`. */
+.gz-drawer-trigger {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--button-bg);
+  color: var(--button-text);
+  cursor: pointer;
+  font-size: 0.95em;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  transition: background-color 0.2s;
+}
+
+.gz-drawer-trigger:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.gz-drawer {
+  position: fixed;
+  zoom: var(--gz-drawer-scale, 0.8);
+  top: var(--gz-drawer-top, 70px);
+  right: var(--gz-drawer-right, 20px);
+  width: 360px;
+  max-height: var(--gz-drawer-max-height, calc(125vh - 100px));
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-y: auto;
+  z-index: 1500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.gz-drawer h3 {
+  margin: 0 0 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  color: var(--text-color);
+}
+
+.gz-drawer-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  font-size: 1.2em;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0;
+  line-height: 1;
+}
+
+.gz-drawer-close:hover {
+  opacity: 1;
+}
+
+.gz-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.gz-drawer-content p {
+  margin: 0;
+}
+
+.gz-drawer-content ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.gz-drawer-content ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.gz-drawer-content li {
+  margin-bottom: 4px;
+}
+
+.gz-drawer-content strong {
+  color: var(--button-bg);
+}
+
+.gz-guide {
+  gap: 0;
+}
+
+.gz-guide-intro {
+  color: var(--text-color);
+  font-size: 1.02em;
+  line-height: 1.5;
+  padding-bottom: 14px;
+}
+
+.gz-guide-nav {
+  padding-bottom: 12px;
+}
+
+.gz-guide-nav > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-color);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gz-guide-nav > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.gz-guide-nav button {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--button-bg);
+  font: inherit;
+  font-size: 0.9em;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gz-guide-nav button:hover,
+.gz-guide-nav button:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gz-guide-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-color);
+  scroll-margin-top: 8px;
+}
+
+.gz-guide-section h4 {
+  margin: 0;
+  color: var(--button-bg);
+  font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.gz-guide-section code {
+  color: var(--text-color);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+.gz-guide-symbols strong {
+  display: inline-block;
+  min-width: 56px;
+}
+
+.gz-guide-note {
+  margin-top: 2px;
+  padding: 10px 11px;
+  border-left: 3px solid var(--button-bg);
+  background: var(--dropdown-bg);
+  color: var(--text-color);
+  line-height: 1.45;
+}
+
+.gz-guide-path {
+  display: block;
+  margin-top: 5px;
+}
+
+.gz-guide-path:last-of-type {
+  margin-bottom: 7px;
+}
+
+/* Labelled text field (ComfyUI host). */
+.gz-drawer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gz-drawer-field > span {
+  font-weight: 600;
+}
+
+.gz-drawer-input {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+}
+
+.gz-drawer-input:focus-within {
+  border-color: var(--button-bg);
+}
+
+.gz-drawer-input > span {
+  display: flex;
+  align-items: center;
+  padding: 6px 0 6px 8px;
+  color: var(--dropdown-text);
+  opacity: 0.55;
+  font-size: 0.95em;
+}
+
+.gz-drawer-input input {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dropdown-text);
+  font-family: inherit;
+  font-size: 0.95em;
+  outline: none;
+}
+
+.gz-drawer-field > small {
+  opacity: 0.6;
+  font-size: 0.8em;
+}
+
+.gz-drawer-toggle-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gz-drawer-toggle-field > small {
+  opacity: 0.6;
+  font-size: 0.8em;
+}

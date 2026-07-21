@@ -1,0 +1,18 @@
+.gz-actions {
+  display: flex;
+  zoom: var(--gz-ui-scale, 0.8);
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+/* All four bar buttons share an identical footprint regardless of label
+   length. Fixed `width` (not `min-width`) so longer labels like
+   "Generate image" don't stretch their button past shorter ones like
+   "Pull". 150px fits the longest label comfortably; flex-shrink: 0
+   prevents the row from squeezing them under pressure. */
+.gz-actions .gz-btn {
+  width: 150px;
+  flex-shrink: 0;
+}

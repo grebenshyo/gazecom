@@ -1,0 +1,6 @@
+# pnpm 10.17 settings - reads here, not package.json#pnpm.
+# esbuild needs its postinstall to select the platform binary.
+onlyBuiltDependencies:
+  - esbuild
+patchedDependencies:
+  heatmap.js@2.0.5: patches/heatmap.js@2.0.5.patch

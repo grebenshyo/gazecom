@@ -1,0 +1,63 @@
+/**
+ * Dropdown — verbatim port of legacy .dropdown-with-label
+ * (css/styles.css:540-591). The label sits in a fixed-width box on the
+ * left of a bordered group; the select fills the rest.
+ */
+
+.gz-dropdown {
+  --gz-dropdown-accent: var(--border-color);
+  --gz-dropdown-label-bg: rgba(0, 0, 0, 0.02);
+  --gz-dropdown-label-fg: var(--text-color);
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--dropdown-bg);
+  overflow: hidden;
+  font-size: 0.9em;
+}
+
+.gz-dropdown__label {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  font-size: 9px;
+  color: var(--gz-dropdown-label-fg);
+  font-weight: 500;
+  width: 100px;
+  text-align: center;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gz-dropdown-label-bg);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+body.gz-theme-dark .gz-dropdown__label {
+  background: var(--gz-dropdown-label-bg);
+}
+
+.gz-dropdown:focus-within {
+  border-color: var(--gz-dropdown-accent);
+}
+
+.gz-dropdown__select {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--dropdown-text);
+  font-size: 14px;
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.gz-dropdown__select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

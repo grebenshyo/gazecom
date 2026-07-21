@@ -1,0 +1,146 @@
+.gz-workflow-picker {
+  position: relative;
+}
+
+.gz-workflow-picker__control {
+  display: flex;
+  min-height: 37px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--dropdown-bg);
+}
+
+.gz-workflow-picker__label {
+  width: 100px;
+  flex: 0 0 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--text-color);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+body.gz-theme-dark .gz-workflow-picker__label {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gz-workflow-picker__trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dropdown-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gz-workflow-picker__trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gz-workflow-picker:focus-within .gz-workflow-picker__control {
+  border-color: var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-workflow-picker__menu {
+  position: fixed;
+  z-index: 3000;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--dropdown-bg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
+.gz-workflow-picker__group {
+  --gz-workflow-category: #477c97;
+  --gz-workflow-category-bg: rgba(71, 124, 151, 0.13);
+  margin-bottom: 5px;
+}
+
+.gz-workflow-picker__group:last-child {
+  margin-bottom: 0;
+}
+
+.gz-workflow-picker__group[data-category="edit"] {
+  --gz-workflow-category: #bb4c8a;
+  --gz-workflow-category-bg: rgba(187, 76, 138, 0.13);
+}
+
+.gz-workflow-picker__group[data-category="inpainting"] {
+  --gz-workflow-category: #b87500;
+  --gz-workflow-category-bg: rgba(184, 117, 0, 0.14);
+}
+
+.gz-workflow-picker__group[data-category="issues"] {
+  --gz-workflow-category: #a13d3d;
+  --gz-workflow-category-bg: rgba(161, 61, 61, 0.13);
+}
+
+.gz-workflow-picker__group-label {
+  padding: 4px 7px;
+  background: var(--gz-workflow-category-bg);
+  color: var(--gz-workflow-category);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.gz-workflow-picker__option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-left: 3px solid var(--gz-workflow-category);
+  background: var(--gz-workflow-category-bg);
+  color: var(--dropdown-text);
+  font: inherit;
+  font-size: 0.86em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gz-workflow-picker__option + .gz-workflow-picker__option {
+  margin-top: 2px;
+}
+
+.gz-workflow-picker__option:hover:not(:disabled),
+.gz-workflow-picker__option:focus-visible:not(:disabled) {
+  filter: saturate(1.35) brightness(0.97);
+  outline: 1px solid var(--gz-workflow-category);
+  outline-offset: -1px;
+}
+
+body.gz-theme-dark .gz-workflow-picker__option:hover:not(:disabled),
+body.gz-theme-dark .gz-workflow-picker__option:focus-visible:not(:disabled) {
+  filter: saturate(1.2) brightness(1.22);
+}
+
+.gz-workflow-picker__option:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.gz-workflow-picker__error {
+  flex: 0 0 auto;
+  color: var(--gz-workflow-category);
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+}

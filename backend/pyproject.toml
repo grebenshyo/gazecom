@@ -1,0 +1,68 @@
+[project]
+name = "gazecom-backend"
+version = "0.2.0"
+description = "gazeCOM backend - FastAPI proxy to ComfyUI for saliency-driven generative art"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "grebenshyo" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28",
+    "websockets>=13",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-httpx>=0.35",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+# Desktop-app packaging (PyInstaller freeze). Kept out of `dev` so lint/test
+# CI stays lean; the release workflow installs `.[build]`.
+build = [
+    "pyinstaller>=6.10",
+]
+
+[project.scripts]
+gazecom-backend = "gengaze.main:run"
+gengaze-backend = "gengaze.main:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["gengaze*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]  # let formatter handle long lines
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI uses callables in argument defaults (Depends, File, Form, Body) as
+# its core dependency-injection idiom. B008 flags this, so we silence it
+# for the routes package only.
+"gengaze/routes/*.py" = ["B008"]
+
+[tool.ruff.lint.isort]
+# The package is `gengaze` (importable name), distinct from the project
+# name `gazecom-backend` used in [project]. Without this hint ruff lumps
+# our own modules into the third-party import group, which (depending on
+# version) collapses the blank-line separator that visually distinguishes
+# our code from external deps.
+known-first-party = ["gengaze"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

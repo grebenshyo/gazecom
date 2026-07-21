@@ -1,0 +1,16 @@
+diff --git a/build/heatmap.js b/build/heatmap.js
+index 3eee39ea8c127b065fb4df763ab76af152e7d368..449980c63b03a7925eb267875e6149342a76418c 100644
+--- a/build/heatmap.js
++++ b/build/heatmap.js
+@@ -524,7 +524,10 @@ var Canvas2dRenderer = (function Canvas2dRendererClosure() {
+ 
+       }
+ 
+-      img.data = imgData;
++      // Patched: ImageData.data is a read-only Uint8ClampedArray in modern
++      // browsers. Direct assignment throws "Cannot assign to read only
++      // property 'data'" — use .set() to copy bytes into the buffer.
++      img.data.set(imgData);
+       this.ctx.putImageData(img, x, y);
+ 
+       this._renderBoundaries = [1000, 1000, 0, 0];

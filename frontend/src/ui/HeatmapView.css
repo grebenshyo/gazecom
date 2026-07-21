@@ -1,0 +1,63 @@
+.gz-heatmap-frame {
+  /* Drive one axis from all three limits and let aspect-ratio derive the
+     other. Independent width/height caps distort the frame when only one
+     axis binds. This is a real resize, so tracker/COM coordinates stay
+     aligned with the visible frame. */
+  width: min(
+    calc(1024px * var(--gz-frame-scale, 1)),
+    calc(100% * var(--gz-frame-scale, 1)),
+    calc(80vh * var(--gz-frame-scale, 1))
+  );
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  /* Match the page bg so transparent inputs (e.g. blank.png) blend
+     seamlessly with the rest of the UI in both light and dark themes. */
+  background-color: var(--bg-color);
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  z-index: 10;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.gz-layout--heatmap-matte .gz-heatmap-frame {
+  background-color: var(--gz-matte-color);
+}
+
+.gz-heatmap-overlay {
+  /* h337 injects `position: relative` inline. Keep the overlay out of normal
+     flow so its stale pre-resize height cannot feed back into the frame's
+     aspect-ratio calculation while the Frame zoom slider is moving. */
+  position: absolute !important;
+  inset: 0;
+  /* Explicit dimensions give h337 a non-zero canvas at creation. */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.gz-heatmap-video {
+  position: absolute;
+  bottom: var(--tracker-preview-inset);
+  right: var(--tracker-preview-inset);
+  width: var(--tracker-preview-width);
+  height: var(--tracker-preview-height);
+  border-radius: var(--tracker-preview-radius);
+  background: #000;
+  z-index: 30;
+  transform: scaleX(-1); /* selfie view */
+}
+
+.gz-heatmap-viz {
+  position: absolute;
+  bottom: var(--tracker-preview-inset);
+  right: var(--tracker-preview-inset);
+  width: var(--tracker-preview-width);
+  height: var(--tracker-preview-height);
+  pointer-events: none;
+  border-radius: var(--tracker-preview-radius);
+  z-index: 31;
+}

@@ -1,0 +1,68 @@
+/**
+ * Bbox crop box — rainbow border, ported from legacy
+ * css/styles.css:1153-1170 (.rainbow-border / #cropBox / #cropBox.active).
+ *
+ * Legacy used `border-image: linear-gradient(45deg, red, orange, yellow,
+ * green, blue, indigo, violet) 1` — static. We keep the same ROYGBIV
+ * palette and the same border-ring rendering (mask cuts the centre out),
+ * but render the spectrum as a *conic* (angular) gradient that sweeps
+ * around the box centre, and cycle hues in place with `filter:
+ * hue-rotate` so the whole spectrum waves through the ring without the
+ * gradient sliding along the border.
+ *
+ * When .active (being dragged) we drop the gradient and switch to a
+ * solid red border, matching legacy.
+ */
+
+.gz-crop-box {
+  position: absolute;
+  inset: 0;
+  border: var(--gz-crop-box-border-width, 4px) solid transparent;
+  cursor: move;
+  box-sizing: border-box;
+  z-index: 5;
+
+  background-image: conic-gradient(
+    from 45deg,
+    red,
+    orange,
+    yellow,
+    green,
+    blue,
+    indigo,
+    violet,
+    red
+  );
+  background-clip: border-box;
+  background-origin: border-box;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+
+  /* Punch the centre out so only the border ring shows the gradient. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+
+  animation: gz-bbox-hue 6s linear infinite;
+}
+
+@keyframes gz-bbox-hue {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.gz-crop-box.active {
+  background-image: none;
+  border-color: #ff0000;
+  animation: none;
+  filter: none;
+}

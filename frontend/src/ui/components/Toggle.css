@@ -1,0 +1,61 @@
+/**
+ * Custom-checkbox toggle, ported verbatim from legacy css/styles.css:
+ * 315-352 (.custom-checkbox).
+ */
+
+.gz-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9em;
+  font-weight: normal;
+}
+
+.gz-toggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  background-color: transparent;
+  cursor: pointer;
+  margin-right: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.gz-toggle input:hover {
+  border-color: var(--gz-control-accent, var(--button-bg));
+}
+
+.gz-toggle input:checked {
+  background-color: var(--gz-control-accent, var(--button-bg));
+  border-color: var(--gz-control-accent, var(--button-bg));
+}
+
+.gz-toggle input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.4);
+}
+
+.gz-toggle input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gz-toggle input:disabled:hover {
+  border-color: var(--border-color);
+}
+
+.gz-toggle:has(input:disabled) {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.gz-toggle__label {
+  cursor: pointer;
+}
