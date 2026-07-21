@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { inputKindFor, resolveInputCOM } from "./pipeline";
+import {
+  inputKindFor,
+  resolveInputCOM,
+  resolvePromptTransforms,
+} from "./pipeline";
 
 describe("inputKindFor", () => {
   it("uses COM crop whenever COM is enabled", () => {
@@ -51,5 +55,49 @@ describe("resolveInputCOM", () => {
         containerSize,
       }),
     ).toEqual({ x: 0.1, y: 0.2 });
+  });
+});
+
+describe("resolvePromptTransforms", () => {
+  it("enhances before vision and returns the unprocessed vision output", async () => {
+    const calls: string[] = [];
+
+    const result = await resolvePromptTransforms(
+      "current instruction",
+      true,
+      async (prompt) => {
+        calls.push(`llm:${prompt}`);
+        return "evolved instruction";
+      },
+      async (prompt) => {
+        calls.push(`vlm:${prompt}`);
+        return "raw visual description";
+      },
+      (prompt) => calls.push(`preview:${prompt}`),
+    );
+
+    expect(calls).toEqual([
+      "llm:current instruction",
+      "preview:evolved instruction",
+      "vlm:evolved instruction",
+    ]);
+    expect(result).toBe("raw visual description");
+  });
+
+  it("does not invoke vision when the slot has vision disabled", async () => {
+    let described = false;
+
+    const result = await resolvePromptTransforms(
+      "current prompt",
+      false,
+      async () => "enhanced prompt",
+      async () => {
+        described = true;
+        return "unused";
+      },
+    );
+
+    expect(result).toBe("enhanced prompt");
+    expect(described).toBe(false);
   });
 });

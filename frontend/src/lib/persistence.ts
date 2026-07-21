@@ -48,6 +48,7 @@ export const StorageKeys = {
   vlmModel: "gengaze.vlmModel",
   llmEnhancePrompt: "gengaze.llmEnhancePrompt",
   vlmPointPrompt: "gengaze.vlmPointPrompt",
+  vlmPointPromptHeight: "gengaze.vlmPointPromptHeight",
   // ui
   theme: "gengaze.theme",
   panelPosition: "gengaze.panelPosition",
@@ -228,6 +229,7 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "boundsHeight":
     case "steps":
     case "cropBoxBorderWidth":
+    case "vlmPointPromptHeight":
       return isFiniteNumber(value);
     case "autoDownloadEvery":
     case "autoClearEvery":

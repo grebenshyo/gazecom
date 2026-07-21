@@ -59,6 +59,7 @@ describe("settings files", () => {
   it("exports current settings without legacy keys", () => {
     writeJSON(StorageKeys.steps, 42);
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
+    writeJSON(StorageKeys.vlmPointPromptHeight, 180);
     writeJSON(StorageKeys.roamSpeed, 9);
 
     const file = createSettingsFile();
@@ -66,7 +67,11 @@ describe("settings files", () => {
     expect(file).toMatchObject({
       format: "gazeCOM-settings",
       schema: 1,
-      settings: { steps: 42, vlmModel: "gemma4:latest" },
+      settings: {
+        steps: 42,
+        vlmModel: "gemma4:latest",
+        vlmPointPromptHeight: 180,
+      },
     });
     expect(file.settings).not.toHaveProperty("roamSpeed");
   });

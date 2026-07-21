@@ -130,32 +130,36 @@ export async function generateOnce(
     //   disabled gate already blocks invalid pools (sum !== 100), so
     //   pickPromptSlot here returns a valid slot. The picked index is
     //   pushed into the store so the panel can highlight that row.
-    //   Per-slot vision can first turn the current visual frame into text.
-    //   Per-slot auto enhancement may then run in "send" mode (use the
-    //   enhanced text for this request only) or "evolve" mode (also write
-    //   the enhanced text back into the picked slot).
+    //   Per-slot auto enhancement runs first: "send" uses the enhanced text
+    //   for this request, while "evolve" also writes it back into the slot.
+    //   Vision then uses that resulting text as its image instruction and
+    //   returns the final generation prompt without further LLM processing.
     let prompt = "";
     const pickedPrompt = pickPromptSlot(state.pinnedPrompts);
     if (pickedPrompt) {
       const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
       const visionEnabled = promptSlotVisionEnabled(slot);
+      const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
       prompt = replaceAllPlaceholders(pickedPrompt.text);
       useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
-      prompt = await maybeDescribeVisionPrompt(
-        ctx,
-        state,
-        useCOM,
+      prompt = await resolvePromptTransforms(
         prompt,
-        pickedPrompt.index,
-        signal,
+        visionEnabled,
+        (text) =>
+          maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
+        (text) =>
+          maybeDescribeVisionPrompt(
+            ctx,
+            state,
+            useCOM,
+            text,
+            pickedPrompt.index,
+            signal,
+          ),
+        autoEnhanceMode === "off"
+          ? undefined
+          : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
       );
-      if (!visionEnabled) {
-        prompt = await maybeAutoEnhancePrompt(
-          prompt,
-          pickedPrompt.index,
-          signal,
-        );
-      }
       syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
     } else {
       useStore.getState().set("lastPickedPromptIndex", null);
@@ -255,6 +259,20 @@ async function maybeAutoClear(count: number): Promise<void> {
   // outer try/finally is already managing that flag for this run.
   // `clearAndReseed` resets `patchesSinceClear` itself.
   await clearAndReseed({ resetGenerationInProgress: false });
+}
+
+/** Apply automatic prompt transforms in their required semantic order. */
+export async function resolvePromptTransforms(
+  prompt: string,
+  visionEnabled: boolean,
+  enhance: (prompt: string) => Promise<string>,
+  describe: (prompt: string) => Promise<string>,
+  onEnhanced?: (prompt: string) => void,
+): Promise<string> {
+  const enhanced = await enhance(prompt);
+  if (!visionEnabled) return enhanced;
+  onEnhanced?.(enhanced);
+  return describe(enhanced);
 }
 
 async function maybeAutoEnhancePrompt(

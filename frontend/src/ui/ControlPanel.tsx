@@ -177,6 +177,7 @@ export function ControlPanel({
   >("idle");
   const [matteColorDraft, setMatteColorDraft] = useState(s.matteColor);
   const selectedImageSeedRef = useRef<string | null>(null);
+  const vlmPromptRef = useRef<HTMLTextAreaElement | null>(null);
 
   /**
    * Whether the prompt controls (List / Template / LLM prompt / models) are shown
@@ -194,6 +195,27 @@ export function ControlPanel({
   useEffect(() => {
     setMatteColorDraft(s.matteColor);
   }, [s.matteColor]);
+
+  useEffect(() => {
+    const textarea = vlmPromptRef.current;
+    if (!textarea) return;
+    let timer: number | null = null;
+    const saveHeight = () => {
+      const height = textarea.offsetHeight;
+      if (height > 0 && height !== useStore.getState().vlmPointPromptHeight) {
+        useStore.getState().set("vlmPointPromptHeight", height);
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(saveHeight, 250);
+    });
+    observer.observe(textarea);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [s.panelMinimized]);
 
   const setMatteColor = (value: string) => {
     const color = normalizeMatteColor(value);
@@ -1144,11 +1166,17 @@ export function ControlPanel({
             VLM prompt
           </span>
           <textarea
+            ref={vlmPromptRef}
             className="gz-prompt-settings-textarea__input"
             value={s.vlmPointPrompt}
             spellCheck={false}
             rows={3}
+            style={{ height: s.vlmPointPromptHeight }}
             onChange={(e) => s.set("vlmPointPrompt", e.target.value)}
+            onPointerUp={(e) => {
+              const height = e.currentTarget.offsetHeight;
+              if (height > 0) s.set("vlmPointPromptHeight", height);
+            }}
           />
         </label>
         <Toggle

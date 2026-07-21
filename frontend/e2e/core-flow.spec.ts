@@ -138,6 +138,37 @@ test("control panel renders all sections", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Medium" })).toBeVisible();
 });
 
+test("VLM prompt height survives collapsing the command palette", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /close/i }).click();
+  await page
+    .locator("button.gz-section__title")
+    .filter({ hasText: /^Advanced/ })
+    .click();
+
+  const vlmPrompt = page.getByRole("textbox", { name: "VLM prompt" });
+  await vlmPrompt.evaluate((textarea) => {
+    textarea.style.height = "180px";
+    textarea.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+  });
+  await expect(vlmPrompt).toHaveCSS("height", "180px");
+
+  await page.getByRole("button", { name: "Collapse panel" }).click();
+  await page.getByRole("button", { name: "Expand panel" }).click();
+
+  await expect(page.getByRole("textbox", { name: "VLM prompt" })).toHaveCSS(
+    "height",
+    "180px",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("gengaze.vlmPointPromptHeight")),
+    )
+    .toBe("180");
+});
+
 test("settings drawer escapes the panel and implicitly saves hosts", async ({
   page,
 }) => {
@@ -244,7 +275,10 @@ test("tracking-mode dropdown switches between all seven trackers", async ({
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();
 
-  const trackingSelect = page.getByRole("combobox", { name: "Mode" });
+  const trackingSelect = page.getByRole("combobox", {
+    name: "Mode",
+    exact: true,
+  });
   await trackingSelect.selectOption("webgazer");
   await page
     .locator("button.gz-section__title")

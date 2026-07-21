@@ -92,6 +92,7 @@ describe("useStore — actions", () => {
       boundsWidth: 4096,
       vlmModel: "vision-model",
       vlmPointPrompt: "custom point prompt",
+      vlmPointPromptHeight: 180,
     });
 
     useStore.getState().resetSection("workflow");
@@ -105,6 +106,7 @@ describe("useStore — actions", () => {
       boundsWidth: 2048,
       vlmModel: "",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
+      vlmPointPromptHeight: 60,
     });
   });
 });

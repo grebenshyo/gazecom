@@ -259,6 +259,8 @@ export interface AppState {
   llmEnhancePrompt: string;
   /** VLM-mode instruction for locating the salient point (Advanced). */
   vlmPointPrompt: string;
+  /** User-resized VLM instruction textarea height in CSS pixels. */
+  vlmPointPromptHeight: number;
 
   // ── Last-pick feedback (transient — not persisted) ───────────────
   /**
@@ -358,6 +360,7 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.boundsHeight,
     StorageKeys.vlmModel,
     StorageKeys.vlmPointPrompt,
+    StorageKeys.vlmPointPromptHeight,
     StorageKeys.calibCache,
   ],
   view: [
@@ -467,6 +470,10 @@ function loadInitial(): AppState {
       StorageKeys.vlmPointPrompt,
       DEFAULT_VLM_POINT_PROMPT,
     ),
+    vlmPointPromptHeight: readJSON<number>(
+      StorageKeys.vlmPointPromptHeight,
+      60,
+    ),
 
     lastPickedWorkflow: null,
     lastPickedPromptIndex: null,
@@ -555,6 +562,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmModel", StorageKeys.vlmModel],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
+  ["vlmPointPromptHeight", StorageKeys.vlmPointPromptHeight],
   ["theme", StorageKeys.theme],
   ["panelMinimized", StorageKeys.panelMinimized],
   ["panelPosition", StorageKeys.panelPosition],
@@ -665,6 +673,7 @@ export const useStore = create<AppState & AppActions>()(
             boundsHeight: defaults.boundsHeight,
             vlmModel: defaults.vlmModel,
             vlmPointPrompt: defaults.vlmPointPrompt,
+            vlmPointPromptHeight: defaults.vlmPointPromptHeight,
             calibCache: defaults.calibCache,
             vlmPoint: null,
           });
