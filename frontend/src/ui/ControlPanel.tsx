@@ -98,8 +98,6 @@ const HEATMAP_STYLE_OPTIONS: ReadonlyArray<{
   { value: "spectral", label: "Spectral" },
 ];
 
-const FALLBACK_LLM_MODELS = ["mistral", "deepseek-r1:8b"];
-
 const UI_SCALE_OPTIONS: ReadonlyArray<{ value: UIScale; label: string }> = [
   { value: 72, label: "Compact" },
   { value: 80, label: "Medium" },
@@ -222,12 +220,12 @@ export function ControlPanel({
     setLlmModels(clean);
     setLlmModelsStatus("loaded");
     const current = useStore.getState().llmModel;
-    if (clean.length > 0 && !clean.includes(current)) {
-      useStore.getState().set("llmModel", clean[0]);
+    if (current && !clean.includes(current)) {
+      useStore.getState().set("llmModel", "");
     }
     const currentVision = useStore.getState().vlmModel;
-    if (clean.length > 0 && !clean.includes(currentVision)) {
-      useStore.getState().set("vlmModel", clean[0]);
+    if (currentVision && !clean.includes(currentVision)) {
+      useStore.getState().set("vlmModel", "");
     }
     return clean;
   };
@@ -255,10 +253,11 @@ export function ControlPanel({
       );
     }
     const current = useStore.getState().llmModel;
-    if (models.includes(current)) return current;
-    const next = models[0];
-    useStore.getState().set("llmModel", next);
-    return next;
+    if (!current || !models.includes(current)) {
+      useStore.getState().set("llmModel", "");
+      throw new Error("Select an Ollama model in the prompt settings.");
+    }
+    return current;
   };
 
   const ensureSelectedVlmModel = async (): Promise<string> => {
@@ -268,18 +267,18 @@ export function ControlPanel({
     }
     if (models.length === 0) {
       throw new Error(
-        "No Ollama models found on the configured host. Pull a vision-capable model on the Ollama machine, then reopen the prompt settings.",
+        "No Ollama models found on the configured host. Pull a model on the Ollama machine, then reload gazeCOM.",
       );
     }
     const current = useStore.getState().vlmModel;
-    if (models.includes(current)) return current;
-    const next = models[0];
-    useStore.getState().set("vlmModel", next);
-    return next;
+    if (!current || !models.includes(current)) {
+      useStore.getState().set("vlmModel", "");
+      throw new Error("Select a Vision model under Advanced.");
+    }
+    return current;
   };
 
   useEffect(() => {
-    if (!promptSettingsOpen) return;
     let alive = true;
     setLlmModelsStatus("loading");
     fetchLlmModels()
@@ -395,18 +394,12 @@ export function ControlPanel({
     availableWorkflows.map((workflow) => [workflow.path, workflow]),
   );
   const llmModelOptions = (() => {
-    const values = new Set<string>();
-    const models =
-      llmModelsStatus === "loaded" && llmModels.length > 0
-        ? llmModels
-        : FALLBACK_LLM_MODELS;
-    for (const model of models) values.add(model);
-    if (llmModelsStatus !== "loaded" && s.llmModel) values.add(s.llmModel);
-    if (values.size === 0 && s.llmModel) values.add(s.llmModel);
-    return [...values]
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-      .map((model) => ({ value: model, label: model }));
+    const placeholder =
+      llmModelsStatus === "loading" ? "Loading models..." : "Select model...";
+    return [
+      { value: "", label: placeholder },
+      ...llmModels.map((model) => ({ value: model, label: model })),
+    ];
   })();
 
   // Drag handle: when the user grabs the title bar, track pointer until
@@ -495,7 +488,7 @@ export function ControlPanel({
             tabIndex={0}
             aria-label="Toggle prompt settings"
             aria-pressed={promptSettingsOpen}
-            title="Prompt settings — list, template, LLM prompt, models"
+            title="Prompt settings — list, template, LLM prompt and model"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -512,6 +505,11 @@ export function ControlPanel({
             ⚙
           </span>
         }
+        onReset={() => {
+          setActiveSlotIndex(0);
+          setEnhancingSlotIndex(null);
+          s.resetSection("prompting");
+        }}
       >
         {s.pinnedPrompts.map((slot, index) => (
           <PromptSlotRow
@@ -711,13 +709,6 @@ export function ControlPanel({
               onChange={(v) => s.set("llmModel", v)}
               disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
             />
-            <Dropdown<LLMModel>
-              label="Vision model"
-              value={s.vlmModel}
-              options={llmModelOptions}
-              onChange={(v) => s.set("vlmModel", v)}
-              disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
-            />
             <label className="gz-prompt-settings-textarea">
               <span className="gz-prompt-settings-textarea__label">
                 LLM prompt
@@ -749,14 +740,19 @@ export function ControlPanel({
             )}
             {llmModelsStatus === "error" && (
               <p className="gz-empty">
-                Could not reach Ollama; showing fallback names until it responds.
+                Could not reach Ollama. Check its address in service settings.
               </p>
             )}
           </>
         )}
       </Section>
 
-      <Section title="Workflow" sectionKey="workflow" collapsible>
+      <Section
+        title="Workflow"
+        sectionKey="workflow"
+        collapsible
+        onReset={() => s.resetSection("workflow")}
+      >
         {availableWorkflows.length === 0 ? (
           <p className="gz-empty">No workflows loaded.</p>
         ) : (
@@ -842,7 +838,12 @@ export function ControlPanel({
         </label>
       </Section>
 
-      <Section title="Settings" sectionKey="settings" collapsible>
+      <Section
+        title="Settings"
+        sectionKey="settings"
+        collapsible
+        onReset={() => s.resetSection("settings")}
+      >
         <Dropdown<TrackingMode>
           label="Mode"
           value={s.trackingMode}
@@ -985,7 +986,12 @@ export function ControlPanel({
         />
       </Section>
 
-      <Section title="Advanced" sectionKey="advanced" collapsible>
+      <Section
+        title="Advanced"
+        sectionKey="advanced"
+        collapsible
+        onReset={() => s.resetSection("advanced")}
+      >
         <div className="gz-row">
           <Toggle
             label="Comp matte"
@@ -1123,6 +1129,13 @@ export function ControlPanel({
           onChange={(v) => s.set("boundsHeight", v)}
           disabled={!s.boundsEnabled}
         />
+        <Dropdown<LLMModel>
+          label="Vision model"
+          value={s.vlmModel}
+          options={llmModelOptions}
+          onChange={(v) => s.set("vlmModel", v)}
+          disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
+        />
         {/* VLM-mode instruction: the vision model returns the single salient
             point that drives COM in VLM tracking mode. Sent to /api/llm/point;
             empty falls back to the backend default. */}
@@ -1158,7 +1171,12 @@ export function ControlPanel({
         </Button>
       </Section>
 
-      <Section title="View" sectionKey="view" collapsible>
+      <Section
+        title="View"
+        sectionKey="view"
+        collapsible
+        onReset={() => s.resetSection("view")}
+      >
         <div className="gz-ui-scale-options" aria-label="Interface scale">
           {UI_SCALE_OPTIONS.map((option) => (
             <Button
@@ -1252,7 +1270,7 @@ export function ControlPanel({
           className="gz-panel-counter"
           title="Patches generated since last clear"
         >
-          it. {s.patchesSinceClear}
+          its. {s.patchesSinceClear}
         </span>
         <ThemeToggle />
         <Drawers />
@@ -1496,6 +1514,7 @@ function Section({
   collapsible,
   children,
   headerAction,
+  onReset,
 }: {
   title: string;
   /** Required when `collapsible` — keys the persisted expanded/collapsed state. */
@@ -1508,6 +1527,8 @@ function Section({
    * toggle the section. Ignored for non-collapsible sections.
    */
   headerAction?: React.ReactNode;
+  /** Restore the fields owned by this section to fresh-install defaults. */
+  onReset?: () => void;
 }) {
   const sectionsExpanded = useStore((s) => s.sectionsExpanded);
   if (!collapsible || !sectionKey) {
@@ -1543,6 +1564,29 @@ function Section({
       >
         <span className="gz-section__title-label">
           <span>{title}</span>
+          {onReset ? (
+            <span
+              className="gz-section__reset"
+              role="button"
+              tabIndex={0}
+              aria-label={`Reset ${title} to defaults`}
+              title={`Reset ${title} to defaults`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onReset();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onReset();
+                }
+              }}
+            >
+              ↺
+            </span>
+          ) : null}
           {headerAction}
         </span>
         <span className="gz-section__caret" aria-hidden="true">

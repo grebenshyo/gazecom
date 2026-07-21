@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   StorageKeys,
+  applySettingsFile,
   clearAllGenGazeKeys,
   clearKey,
+  createSettingsFile,
   readJSON,
   writeJSON,
 } from "./persistence";
@@ -50,5 +52,66 @@ describe("clearKey / clearAllGenGazeKeys", () => {
     expect(localStorage.getItem(StorageKeys.steps)).toBeNull();
     expect(localStorage.getItem(StorageKeys.theme)).toBeNull();
     expect(localStorage.getItem("other-app-key")).toBe("keep-me");
+  });
+});
+
+describe("settings files", () => {
+  it("exports current settings without legacy keys", () => {
+    writeJSON(StorageKeys.steps, 42);
+    writeJSON(StorageKeys.vlmModel, "gemma4:latest");
+    writeJSON(StorageKeys.roamSpeed, 9);
+
+    const file = createSettingsFile();
+
+    expect(file).toMatchObject({
+      format: "gazeCOM-settings",
+      schema: 1,
+      settings: { steps: 42, vlmModel: "gemma4:latest" },
+    });
+    expect(file.settings).not.toHaveProperty("roamSpeed");
+  });
+
+  it("imports recognized settings, ignores unknown fields, and replaces old values", () => {
+    writeJSON(StorageKeys.steps, 77);
+    writeJSON(StorageKeys.theme, "dark");
+    localStorage.setItem("other-app-key", "keep-me");
+
+    const count = applySettingsFile({
+      format: "gazeCOM-settings",
+      schema: 1,
+      exportedAt: "2026-07-21T00:00:00.000Z",
+      settings: { steps: 12, futureSetting: "ignored" },
+    });
+
+    expect(count).toBe(1);
+    expect(readJSON(StorageKeys.steps, 0)).toBe(12);
+    expect(localStorage.getItem(StorageKeys.theme)).toBeNull();
+    expect(localStorage.getItem("other-app-key")).toBe("keep-me");
+  });
+
+  it("rejects invalid known values before changing current settings", () => {
+    writeJSON(StorageKeys.steps, 77);
+
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { steps: "many" },
+      }),
+    ).toThrow('Invalid value for setting "steps".');
+    expect(readJSON(StorageKeys.steps, 0)).toBe(77);
+  });
+
+  it("rejects unrelated and unsupported files", () => {
+    expect(() => applySettingsFile({ settings: {} })).toThrow(
+      "This is not a gazeCOM settings file.",
+    );
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 2,
+        settings: {},
+      }),
+    ).toThrow("Unsupported settings schema: 2.");
   });
 });

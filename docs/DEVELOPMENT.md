@@ -80,12 +80,13 @@ the product, distribution package, and command-line entry point use gazeCOM.
   events to fetch outputs (no filesystem polling).
 - `workflow.py` — pure placeholder substitution (unit-tested).
 - `routes/` — `config`, `workflows`, `images`, `generate`, and `llm`
-  (`/api/llm/enhance`, `/describe`, `/point`, `/models`).
+  (`/api/llm/enhance`, `/describe`, `/point`, `/models`). The models endpoint
+  reports Ollama's installed tags without guessing model capabilities.
 
 ## Frontend (`frontend/src/`)
 
 - `store/` — Zustand store, single source of truth; persists to localStorage
-  via subscription middleware.
+  via subscription middleware and owns fresh-install section resets.
 - `canvas/` — `Composite.ts` (pure expanding-canvas math), `Heatmap.ts`
   (gradient styles + COM), `HeatmapInstance.ts` (h337 wrapper),
   `CompositeBounds.ts` (bounds/COM clamping), `PullTool.tsx` (1024² crop).
@@ -100,6 +101,10 @@ the product, distribution package, and command-line entry point use gazeCOM.
 - `ui/` — React components (`ControlPanel`, `HeatmapView`, `CompositeView`,
   `MainActions`, `WelcomeModal`) and hooks (`useTracker`, `useHeatmap`,
   `useGenerate`, `useIterativeLoop`).
+- `lib/persistence.ts` — typed localStorage helpers plus the validated,
+  versioned JSON settings export/import format. Imports replace frontend
+  preferences atomically; backend service bindings and asset files are not
+  part of the file.
 
 Architecture invariants (one tracker interface, one store, one generation
 entry point, pure/tested functions for the canvas + COM math) are documented
@@ -206,6 +211,9 @@ builds additionally scan the writable per-user directory created at launch:
 Both roots share the same visible category/name key. A user workflow with the
 same key overrides the bundled workflow. Prompt enhancement and vision call
 Ollama directly through `/api/llm/*`; they do not use ComfyUI workflows.
+Installed Ollama tags populate both model menus, but selections begin blank and
+remain explicit. Missing selections and unavailable models fail visibly rather
+than falling back to another installed model.
 
 ## Lineage
 

@@ -80,6 +80,13 @@ export async function generateOnce(
 ): Promise<void> {
   const state = useStore.getState();
   if (state.generationInProgress) return;
+  if (
+    state.trackingMode === "vlm" &&
+    state.trackingActive &&
+    !state.vlmModel.trim()
+  ) {
+    throw new Error("Select a Vision model under Advanced.");
+  }
 
   // 1. Resolve workflow.
   const workflow = resolveWorkflow();
@@ -263,27 +270,24 @@ async function maybeAutoEnhancePrompt(
   );
   if (mode === "off") return prompt;
 
-  try {
-    const model = useStore.getState().llmModel;
-    const template = useStore.getState().llmEnhancePrompt;
-    const enhanced = await new OllamaLLMProvider(model).enhance(
-      prompt,
-      template,
-      signal,
-    );
-    if (mode === "evolve" && options.writeEvolve !== false) {
-      const live = useStore.getState();
-      live.set(
-        "pinnedPrompts",
-        setPromptSlotText(live.pinnedPrompts, slotIndex, enhanced),
-      );
-    }
-    return enhanced;
-  } catch (err) {
-    if (isAbortError(err)) throw err;
-    console.warn("Auto prompt enhancement failed; using original prompt.", err);
-    return prompt;
+  const model = useStore.getState().llmModel;
+  if (!model.trim()) {
+    throw new Error("Select an Ollama model in the prompt settings.");
   }
+  const template = useStore.getState().llmEnhancePrompt;
+  const enhanced = await new OllamaLLMProvider(model).enhance(
+    prompt,
+    template,
+    signal,
+  );
+  if (mode === "evolve" && options.writeEvolve !== false) {
+    const live = useStore.getState();
+    live.set(
+      "pinnedPrompts",
+      setPromptSlotText(live.pinnedPrompts, slotIndex, enhanced),
+    );
+  }
+  return enhanced;
 }
 
 function syncDerivedPrompt(
@@ -322,8 +326,11 @@ async function maybeDescribeVisionPrompt(
     throw new Error("Vision prompt is empty. Type a VLM instruction such as \"describe\".");
   }
 
-  const image = await buildVisionInput(ctx, state, useCOM);
   const model = useStore.getState().vlmModel;
+  if (!model.trim()) {
+    throw new Error("Select a Vision model under Advanced.");
+  }
+  const image = await buildVisionInput(ctx, state, useCOM);
   const described = await new OllamaVLMProvider(model).describe(
     image,
     prompt,
@@ -352,9 +359,10 @@ const VLM_POINT_ATTEMPTS = 3;
  * clears/rebuilds that a generation triggers — a single direct write would be
  * wiped and, with a passive tracker, never restored.
  *
- * Robustness: bounded resubmit on unparseable/failed responses, then keep the
- * previous point so an iterative loop never halts. Honors the same abort /
- * epoch guards as `applyResult` so Stop halts and Pull/Clear discards.
+ * Robustness: bounded resubmit on unparseable responses. Exhausted attempts
+ * throw so the UI reports the tracking failure and iterative generation stops.
+ * Honors the same abort / epoch guards as `applyResult` so Stop halts and
+ * Pull/Clear discards.
  */
 async function maybeUpdateVlmPoint(
   outputURL: string,
@@ -367,6 +375,9 @@ async function maybeUpdateVlmPoint(
     throw new DOMException("Generation aborted before VLM point", "AbortError");
   }
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
+  if (!live.vlmModel.trim()) {
+    throw new Error("Select a Vision model under Advanced.");
+  }
 
   // The frame the VLM looks at is the one just applied to the canvas.
   let frame: Blob;
@@ -375,13 +386,13 @@ async function maybeUpdateVlmPoint(
     frame = await resp.blob();
   } catch (err) {
     if (isAbortError(err)) throw err;
-    console.warn("VLM point: could not read the generated frame.", err);
-    return;
+    throw new Error("VLM tracking could not read the generated frame.");
   }
 
   const provider = new OllamaVLMProvider(live.vlmModel);
   const instruction = live.vlmPointPrompt;
   let point: VLMPoint | null = null;
+  let lastError: unknown = null;
   for (let attempt = 0; attempt < VLM_POINT_ATTEMPTS; attempt++) {
     if (signal?.aborted) {
       throw new DOMException("Generation aborted before VLM point", "AbortError");
@@ -391,14 +402,19 @@ async function maybeUpdateVlmPoint(
       if (point) break;
     } catch (err) {
       if (isAbortError(err)) throw err;
+      lastError = err;
       console.warn(
         `VLM point attempt ${attempt + 1}/${VLM_POINT_ATTEMPTS} failed.`,
         err,
       );
     }
   }
-  // Exhausted attempts with no point — keep the previous one (never halt).
-  if (!point) return;
+  if (!point) {
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(
+      `VLM tracking could not parse a point after ${VLM_POINT_ATTEMPTS} attempts.`,
+    );
+  }
 
   // Re-check guards after the network round-trip(s).
   if (signal?.aborted) {

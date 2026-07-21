@@ -1,9 +1,13 @@
 /** Help and runtime settings drawers. */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store";
-import { clearAllGenGazeKeys } from "../lib/persistence";
+import {
+  applySettingsFile,
+  clearAllGenGazeKeys,
+  createSettingsFile,
+} from "../lib/persistence";
 import {
   fetchConfig,
   resetConfig,
@@ -168,8 +172,20 @@ function HelpPanel({
           <p>
             Prompt slots form a second weighted pool. Add slots for alternatives
             and set their weights to total 100%; a single slot remains at 100%.
-            The Prompting cog opens templates, prompt lists, model selection,
-            and the editable LLM instruction wrapper.
+            Focus a slot before choosing from the Prompting cog: List selects a
+            built-in collection, and Template writes one entry from that list
+            into the focused slot. Templates are starting text, not additional
+            pinned slots.
+          </p>
+          <p>
+            Template placeholders are randomized when a prompt is sent. The
+            available tokens are <code>{"{cartoon character}"}</code>,
+            <code>{"{tree part}"}</code>, <code>{"{support}"}</code>,
+            <code>{"{color}"}</code>, and <code>{"{artist}"}</code>; repeated
+            tokens are resolved independently. The cog also contains the Ollama
+            model and editable LLM wrapper. <code>{"{prompt}"}</code> marks
+            where the slot text enters that wrapper; without it, the text is
+            appended.
           </p>
           <ul className="gz-guide-symbols">
             <li>
@@ -188,10 +204,15 @@ function HelpPanel({
             </li>
           </ul>
           <p>
-            The vision state turns a slot into an image-description instruction.
-            The VLM reads the current frame first, displays its derived prompt
-            below the instruction, and sends that result directly to generation
-            without a second enhancement pass.
+            The ◉ vision state turns that slot into an image-description
+            instruction. The Vision model selected under Advanced reads the
+            current frame first, displays its derived prompt below the
+            instruction, and sends that result directly to generation without a
+            second enhancement pass.
+          </p>
+          <p>
+            The ↺ control in each panel heading restores only that section to
+            its fresh-install state.
           </p>
         </section>
 
@@ -301,7 +322,7 @@ function HelpPanel({
           <p>
             Advanced contains heatmap and composite matte colors, eyedropper
             sampling, automatic download/clear intervals, canvas limits, the VLM
-            coordinate prompt, and WebGazer calibration-cache controls.
+            model and coordinate prompt, and WebGazer calibration-cache controls.
           </p>
           <p>
             View controls interface scale, frame zoom and visibility, fit target,
@@ -319,6 +340,12 @@ function HelpPanel({
             the model is released after each request. Skip provider errors is a
             global option for allowing iterative cloud workflows to continue
             after a provider failure.
+          </p>
+          <p>
+            Export settings downloads browser-persisted preferences as JSON;
+            Import settings restores them on this or another installation.
+            Service addresses, workflow files, images, API keys, canvases, and
+            WebGazer calibration data stay machine-local.
           </p>
         </section>
       </div>
@@ -359,6 +386,8 @@ function SettingsPanel({
   const [comfyHostError, setComfyHostError] = useState("");
   const [ollamaHostError, setOllamaHostError] = useState("");
   const [ollamaKeepError, setOllamaKeepError] = useState("");
+  const [settingsFileError, setSettingsFileError] = useState("");
+  const settingsFileInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     let alive = true;
     fetchConfig()
@@ -419,6 +448,31 @@ function SettingsPanel({
     } catch (err) {
       setOllamaKeepStatus("error");
       setOllamaKeepError((err as Error).message);
+    }
+  };
+  const exportSettings = () => {
+    setSettingsFileError("");
+    const contents = JSON.stringify(createSettingsFile(), null, 2);
+    const url = URL.createObjectURL(
+      new Blob([contents], { type: "application/json" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `gazecom-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const importSettings = async (file: File) => {
+    setSettingsFileError("");
+    try {
+      applySettingsFile(JSON.parse(await file.text()) as unknown);
+      window.location.reload();
+    } catch (err) {
+      const message = (err as Error).message;
+      setSettingsFileError(message);
+      window.alert(`Import failed: ${message}`);
     }
   };
 
@@ -529,6 +583,43 @@ function SettingsPanel({
           checked={showWelcome}
           onChange={(v) => set("showWelcome", v)}
         />
+        <section className="gz-settings-transfer">
+          <strong>Settings file</strong>
+          <input
+            ref={settingsFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void importSettings(file);
+            }}
+          />
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={exportSettings}
+            >
+              Export settings
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => settingsFileInputRef.current?.click()}
+            >
+              Import settings
+            </Button>
+          </div>
+          <small>
+            App preferences only. Service addresses, workflow files, images and
+            API keys remain local.
+          </small>
+          {settingsFileError && <small>{settingsFileError}</small>}
+        </section>
         <Button
           variant="secondary"
           onMouseDown={(e) => e.preventDefault()}

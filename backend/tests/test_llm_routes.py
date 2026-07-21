@@ -45,59 +45,10 @@ def test_llm_models_lists_ollama_tags(
             ]
         },
     )
-    # Capability probe per listed model: zeta is a VLM, mistral is text-only.
-    httpx_mock.add_response(
-        method="POST",
-        url="http://ollama.local:11434/api/show",
-        match_json={"model": "zeta:latest"},
-        json={"capabilities": ["completion", "vision"]},
-    )
-    httpx_mock.add_response(
-        method="POST",
-        url="http://ollama.local:11434/api/show",
-        match_json={"model": "mistral:latest"},
-        json={"capabilities": ["completion", "tools"]},
-    )
-
     resp = client.get("/api/llm/models")
 
     assert resp.status_code == 200
-    assert resp.json() == {
-        "models": ["mistral:latest", "zeta:latest"],
-        "vision": ["zeta:latest"],
-    }
-
-
-def test_llm_models_survives_capability_probe_failures(
-    client: TestClient,
-    httpx_mock: HTTPXMock,
-) -> None:
-    """A broken /api/show degrades to "not vision" — never breaks the list."""
-    httpx_mock.add_response(
-        method="GET",
-        url="http://ollama.local:11434/api/tags",
-        json={"models": [{"name": "alpha:latest"}, {"name": "beta:latest"}]},
-    )
-    httpx_mock.add_response(
-        method="POST",
-        url="http://ollama.local:11434/api/show",
-        match_json={"model": "alpha:latest"},
-        status_code=500,
-    )
-    httpx_mock.add_response(
-        method="POST",
-        url="http://ollama.local:11434/api/show",
-        match_json={"model": "beta:latest"},
-        json={"capabilities": ["completion", "vision"]},
-    )
-
-    resp = client.get("/api/llm/models")
-
-    assert resp.status_code == 200
-    assert resp.json() == {
-        "models": ["alpha:latest", "beta:latest"],
-        "vision": ["beta:latest"],
-    }
+    assert resp.json() == {"models": ["mistral:latest", "zeta:latest"]}
 
 
 def test_llm_describe_calls_ollama_chat_with_image(

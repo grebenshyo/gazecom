@@ -608,7 +608,8 @@ body.gz-theme-dark .gz-pool-warning {
    Rendered as a role="button" span (not a nested <button>) that stops
    propagation, so clicking it reveals the controls without collapsing
    the section. */
-.gz-section__cog {
+.gz-section__cog,
+.gz-section__reset {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -617,8 +618,13 @@ body.gz-theme-dark .gz-pool-warning {
   user-select: none;
 }
 
-.gz-section__cog:hover {
+.gz-section__cog:hover,
+.gz-section__reset:hover {
   opacity: 1;
+}
+
+.gz-section__reset {
+  font-size: 15px;
 }
 
 .gz-section--collapsed > .gz-section__body {

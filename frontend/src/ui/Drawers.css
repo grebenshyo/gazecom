@@ -254,3 +254,31 @@
   opacity: 0.6;
   font-size: 0.8em;
 }
+
+.gz-settings-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.gz-settings-transfer > strong {
+  font-size: 0.85em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gz-settings-transfer > div {
+  display: flex;
+  gap: 6px;
+}
+
+.gz-settings-transfer > div .gz-btn {
+  flex: 1;
+}
+
+.gz-settings-transfer > small {
+  opacity: 0.6;
+  font-size: 0.8em;
+}

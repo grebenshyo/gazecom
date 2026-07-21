@@ -117,6 +117,31 @@ run can use one fixed choice or rotate probabilistically. Prompt slots can be
 sent directly, rewritten by a local LLM (once or self-evolving), or produced
 from the current frame by a vision model.
 
+### Prompting and models
+
+The **Prompting** cog exposes built-in prompt lists and templates. A chosen
+template is written into the currently focused slot; placeholders such as
+`{cartoon character}`, `{tree part}`, `{support}`, `{color}`, and `{artist}`
+are randomized when that slot is sent. The same panel contains the editable
+LLM wrapper, where `{prompt}` marks the insertion point.
+
+Ollama model selection is explicit: fresh installations select nothing, and a
+removed model returns the relevant menu to blank instead of silently choosing
+another. Choose the text model under the Prompting cog and the vision model
+under **Advanced**. The sparkle button runs the selected tool once; automatic
+prompting cycles between off (`○`), send without replacing the slot (`↗`), and
+self-evolving replacement (`↻`). The per-slot vision button describes the
+current frame before generation and displays the returned prompt separately.
+
+### Settings and portability
+
+The `↺` control in each panel heading restores only that section to its
+fresh-install state. The global **Settings** drawer can export browser-persisted
+preferences as a versioned JSON file and import them on another installation.
+This includes prompt slots, workflow pins, model choices, tracking profiles,
+and UI preferences. Service addresses, workflow files, images, API keys,
+canvases, and WebGazer calibration data remain machine-local.
+
 ### Custom workflows
 
 gazeCOM groups ComfyUI API-format workflows into `img`, `edit`, and

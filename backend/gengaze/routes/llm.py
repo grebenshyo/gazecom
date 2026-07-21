@@ -23,7 +23,6 @@ from gengaze.user_config import (
 
 router = APIRouter()
 
-DEFAULT_MODEL = "mistral"
 DEFAULT_ENHANCE_TEMPLATE = (
     'Rewrite this into a stronger image-generation prompt:\n\n'
     '"{prompt}"\n\n'
@@ -55,7 +54,7 @@ _POINT_NUM_RE = re.compile(_NUM)
 
 class LLMEnhanceIn(BaseModel):
     prompt: str = Field(min_length=1)
-    model: str = Field(default=DEFAULT_MODEL, min_length=1)
+    model: str = Field(min_length=1)
     template: str = DEFAULT_ENHANCE_TEMPLATE
 
 
@@ -65,9 +64,6 @@ class LLMEnhanceOut(BaseModel):
 
 class LLMModelsOut(BaseModel):
     models: list[str]
-    # Subset of `models` whose Ollama capabilities include "vision" —
-    # candidates for the frontend's Vision-model dropdown.
-    vision: list[str] = []
 
 
 class LLMPointOut(BaseModel):
@@ -220,28 +216,10 @@ async def list_models(settings: Settings = Depends(get_settings)) -> LLMModelsOu
                 if isinstance(item, dict) and isinstance(item.get("name"), str):
                     models.append(item["name"])
 
-            # Vision capability per model via /api/show. A failed or odd
-            # /api/show response just means "not vision" — the model list
-            # itself must never break on capability probing.
-            vision: list[str] = []
-            for name in models:
-                try:
-                    show = await client.post(
-                        f"{base_url}/api/show", json={"model": name}
-                    )
-                    show.raise_for_status()
-                    caps = show.json().get("capabilities")
-                except (httpx.HTTPError, ValueError):
-                    continue
-                if isinstance(caps, list) and "vision" in caps:
-                    vision.append(name)
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Ollama model list failed: {e}") from e
 
-    return LLMModelsOut(
-        models=sorted(models, key=str.casefold),
-        vision=sorted(vision, key=str.casefold),
-    )
+    return LLMModelsOut(models=sorted(models, key=str.casefold))
 
 
 @router.post("/llm/enhance", summary="Enhance a prompt through Ollama")
@@ -320,7 +298,7 @@ async def enhance(
 @router.post("/llm/describe", summary="Describe an image through Ollama")
 async def describe(
     image: UploadFile = File(...),
-    model: str = Form(default=DEFAULT_MODEL, min_length=1),
+    model: str = Form(min_length=1),
     prompt: str = Form(default=""),
     settings: Settings = Depends(get_settings),
 ) -> LLMEnhanceOut:
@@ -408,7 +386,7 @@ async def describe(
 @router.post("/llm/point", summary="Locate the salient point in an image")
 async def point(
     image: UploadFile = File(...),
-    model: str = Form(default=DEFAULT_MODEL, min_length=1),
+    model: str = Form(min_length=1),
     prompt: str = Form(default=""),
     settings: Settings = Depends(get_settings),
 ) -> LLMPointOut:

@@ -14,6 +14,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import { type HeatmapStyleName } from "../canvas/Heatmap";
 import {
   StorageKeys,
+  clearKey,
   readJSON,
   writeJSON,
   type StorageKey,
@@ -45,6 +46,12 @@ export type CompositeFitTarget = "patch" | "composite";
 export type UIScale = 72 | 80 | 100;
 
 export type LLMModel = string;
+export type ResettableSection =
+  | "prompting"
+  | "workflow"
+  | "settings"
+  | "advanced"
+  | "view";
 
 export const DEFAULT_LLM_ENHANCE_PROMPT =
   'Rewrite this into a stronger image-generation prompt:\n\n' +
@@ -316,6 +323,53 @@ export type AppActions = {
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void;
   patch: (partial: Partial<AppState>) => void;
   resetGeneration: () => void;
+  resetSection: (section: ResettableSection) => void;
+};
+
+const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
+  prompting: [
+    StorageKeys.promptList,
+    StorageKeys.pinnedPrompts,
+    StorageKeys.llmModel,
+    StorageKeys.llmEnhancePrompt,
+  ],
+  workflow: [StorageKeys.pinnedWorkflows, StorageKeys.steps],
+  settings: [
+    StorageKeys.trackingMode,
+    StorageKeys.trackingProfiles,
+    StorageKeys.eventHistoryLength,
+    StorageKeys.heatmapStyle,
+    StorageKeys.selectedImage,
+    StorageKeys.feedbackMode,
+    StorageKeys.comMode,
+    StorageKeys.compositeMode,
+    StorageKeys.iterativeMode,
+    StorageKeys.iterativeDelay,
+  ],
+  advanced: [
+    StorageKeys.compositeMatteEnabled,
+    StorageKeys.heatmapMatteEnabled,
+    StorageKeys.matteEnabled,
+    StorageKeys.matteColor,
+    StorageKeys.autoDownloadEvery,
+    StorageKeys.autoClearEvery,
+    StorageKeys.boundsEnabled,
+    StorageKeys.boundsWidth,
+    StorageKeys.boundsHeight,
+    StorageKeys.vlmModel,
+    StorageKeys.vlmPointPrompt,
+    StorageKeys.calibCache,
+  ],
+  view: [
+    StorageKeys.uiScale,
+    StorageKeys.frameZoom,
+    StorageKeys.compositeFitEnabled,
+    StorageKeys.compositeFitTarget,
+    StorageKeys.cropBoxVisible,
+    StorageKeys.cropBoxBorderWidth,
+    StorageKeys.canvasVisible,
+    StorageKeys.heatmapVisible,
+  ],
 };
 
 // ── Initial state, hydrated from localStorage ───────────────────────────
@@ -403,8 +457,8 @@ function loadInitial(): AppState {
       }
       return [{ ...EMPTY_SLOT, weight: 100 }];
     })(),
-    llmModel: readJSON<LLMModel>(StorageKeys.llmModel, "mistral"),
-    vlmModel: readJSON<LLMModel>(StorageKeys.vlmModel, "llava:latest"),
+    llmModel: readJSON<LLMModel>(StorageKeys.llmModel, ""),
+    vlmModel: readJSON<LLMModel>(StorageKeys.vlmModel, ""),
     llmEnhancePrompt: readJSON<string>(
       StorageKeys.llmEnhancePrompt,
       DEFAULT_LLM_ENHANCE_PROMPT,
@@ -557,6 +611,78 @@ export const useStore = create<AppState & AppActions>()(
         isComposited: false,
         generationInProgress: false,
       })),
+    resetSection: (section) => {
+      for (const key of SECTION_STORAGE_KEYS[section]) clearKey(key);
+      const defaults = loadInitial();
+
+      switch (section) {
+        case "prompting":
+          set({
+            promptList: defaults.promptList,
+            pinnedPrompts: defaults.pinnedPrompts,
+            llmModel: defaults.llmModel,
+            llmEnhancePrompt: defaults.llmEnhancePrompt,
+            lastPickedPromptIndex: null,
+          });
+          break;
+        case "workflow":
+          set({
+            pinnedWorkflows: defaults.pinnedWorkflows,
+            steps: defaults.steps,
+            lastPickedWorkflow: null,
+          });
+          break;
+        case "settings":
+          set((state) => ({
+            trackingMode: defaults.trackingMode,
+            trackingProfiles: defaults.trackingProfiles,
+            roamSpeed: defaults.roamSpeed,
+            trailLength: defaults.trailLength,
+            eventHistoryLength: defaults.eventHistoryLength,
+            pointSize: defaults.pointSize,
+            pointJitter: defaults.pointJitter,
+            heatmapStyle: defaults.heatmapStyle,
+            selectedImage: state.availableImages[0] ?? defaults.selectedImage,
+            feedbackMode: defaults.feedbackMode,
+            comMode: defaults.comMode,
+            compositeMode: defaults.compositeMode,
+            iterativeMode: defaults.iterativeMode,
+            iterativeDelay: defaults.iterativeDelay,
+            trackingActive: false,
+            iterativeRunning: false,
+            vlmPoint: null,
+          }));
+          break;
+        case "advanced":
+          set({
+            compositeMatteEnabled: defaults.compositeMatteEnabled,
+            heatmapMatteEnabled: defaults.heatmapMatteEnabled,
+            matteColor: defaults.matteColor,
+            autoDownloadEvery: defaults.autoDownloadEvery,
+            autoClearEvery: defaults.autoClearEvery,
+            boundsEnabled: defaults.boundsEnabled,
+            boundsWidth: defaults.boundsWidth,
+            boundsHeight: defaults.boundsHeight,
+            vlmModel: defaults.vlmModel,
+            vlmPointPrompt: defaults.vlmPointPrompt,
+            calibCache: defaults.calibCache,
+            vlmPoint: null,
+          });
+          break;
+        case "view":
+          set({
+            uiScale: defaults.uiScale,
+            frameZoom: defaults.frameZoom,
+            compositeFitEnabled: defaults.compositeFitEnabled,
+            compositeFitTarget: defaults.compositeFitTarget,
+            cropBoxVisible: defaults.cropBoxVisible,
+            cropBoxBorderWidth: defaults.cropBoxBorderWidth,
+            canvasVisible: defaults.canvasVisible,
+            heatmapVisible: defaults.heatmapVisible,
+          });
+          break;
+      }
+    },
   })),
 );
 

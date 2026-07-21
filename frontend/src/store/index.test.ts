@@ -44,9 +44,78 @@ describe("useStore — actions", () => {
     expect(s.isComposited).toBe(false);
     expect(s.generationInProgress).toBe(false);
   });
+
+  it("resetSection() restores only the requested section", async () => {
+    const { DEFAULT_LLM_ENHANCE_PROMPT, useStore } = await import("./index");
+    useStore.getState().patch({
+      llmModel: "text-model",
+      vlmModel: "vision-model",
+      llmEnhancePrompt: "custom wrapper",
+    });
+
+    useStore.getState().resetSection("prompting");
+
+    expect(useStore.getState()).toMatchObject({
+      llmModel: "",
+      vlmModel: "vision-model",
+      llmEnhancePrompt: DEFAULT_LLM_ENHANCE_PROMPT,
+    });
+  });
+
+  it("resetSection() restores Settings profiles and View defaults", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().set("trackingMode", "roam2");
+    useStore.getState().set("pointSize", 150);
+    useStore.getState().patch({ uiScale: 100, frameZoom: 40 });
+
+    useStore.getState().resetSection("settings");
+    useStore.getState().resetSection("view");
+
+    expect(useStore.getState()).toMatchObject({
+      trackingMode: "roam",
+      roamSpeed: 0.2,
+      trailLength: 300,
+      pointSize: 50,
+      pointJitter: 0,
+      uiScale: 80,
+      frameZoom: 85,
+    });
+  });
+
+  it("resetSection() restores Workflow and Advanced defaults", async () => {
+    const { DEFAULT_VLM_POINT_PROMPT, useStore } = await import("./index");
+    useStore.getState().patch({
+      pinnedWorkflows: { "edit/custom.json": 100 },
+      steps: 42,
+      compositeMatteEnabled: true,
+      boundsEnabled: true,
+      boundsWidth: 4096,
+      vlmModel: "vision-model",
+      vlmPointPrompt: "custom point prompt",
+    });
+
+    useStore.getState().resetSection("workflow");
+    useStore.getState().resetSection("advanced");
+
+    expect(useStore.getState()).toMatchObject({
+      pinnedWorkflows: {},
+      steps: 10,
+      compositeMatteEnabled: false,
+      boundsEnabled: false,
+      boundsWidth: 2048,
+      vlmModel: "",
+      vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
+    });
+  });
 });
 
 describe("useStore — persistence", () => {
+  it("starts with no Ollama model selected", async () => {
+    const { useStore } = await import("./index");
+    expect(useStore.getState().llmModel).toBe("");
+    expect(useStore.getState().vlmModel).toBe("");
+  });
+
   it("uses the tuned Roam profile on a fresh install", async () => {
     const { useStore } = await import("./index");
     const s = useStore.getState();

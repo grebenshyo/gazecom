@@ -1,7 +1,7 @@
 # gazeCOM backend
 
-FastAPI server that proxies image-generation requests to ComfyUI and prompt
-enhancement requests to Ollama.
+FastAPI server that proxies image-generation requests to ComfyUI and language
+or vision requests to Ollama.
 
 ## Setup
 
@@ -36,7 +36,8 @@ ruff check .
 - `gengaze/workflow.py` — pure helpers (placeholder substitution)
 - `gengaze/main.py` — FastAPI app factory
 - `gengaze/routes/` - runtime configuration, workflow catalog, images,
-  generation, and Ollama LLM/VLM endpoints
+  generation, and Ollama LLM/VLM endpoints. `/api/llm/models` returns the
+  installed Ollama tags; model choice remains a frontend/user decision.
 - `tests/` — pytest
 
 ## Status
