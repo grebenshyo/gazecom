@@ -5,16 +5,18 @@ import {
   addPromptSlot,
   nextPromptAutoEnhanceMode,
   pickPromptSlot,
+  promptPoolHasActiveSlot,
   promptSlotAutoEnhanceMode,
+  promptSlotMuted,
   promptSlotVisionEnabled,
   promptSlotsForPersistence,
   promptPoolIsValid,
-  promptPoolSum,
   removePromptSlot,
   setPromptSlotAutoEnhanceMode,
   setPromptSlotDerivedHeight,
   setPromptSlotDerivedText,
   setPromptSlotHeight,
+  setPromptSlotMuted,
   setPromptSlotText,
   setPromptSlotVisionEnabled,
   setPromptSlotWeight,
@@ -49,6 +51,7 @@ describe("addPromptSlot", () => {
       {
         text: "",
         weight: 0,
+        muted: false,
         height: null,
         autoEnhanceMode: "off",
         visionEnabled: false,
@@ -219,12 +222,12 @@ describe("promptSlotsForPersistence", () => {
 });
 
 describe("setPromptSlotWeight", () => {
-  it("single-slot pool forces weight to 100 regardless of input", () => {
+  it("keeps a single-slot pool weight editable", () => {
     const next = setPromptSlotWeight(baseOnly(), 0, 42);
-    expect(next[0].weight).toBe(100);
+    expect(next[0].weight).toBe(42);
   });
 
-  it("multi-slot pool sets the weight as-is, clamped 0–100, no rebalance", () => {
+  it("sets relative weights as-is without rebalancing", () => {
     const slots: PromptSlots = [
       { text: "a", weight: 100, height: null },
       { text: "b", weight: 0, height: null },
@@ -234,7 +237,6 @@ describe("setPromptSlotWeight", () => {
       { text: "a", weight: 100, height: null }, // unchanged — user's job to lower it
       { text: "b", weight: 40, height: null },
     ]);
-    expect(promptPoolSum(next)).toBe(140); // deliberately invalid; surfaces a warning in the UI
   });
 
   it("clamps weight to [0, 100]", () => {
@@ -249,6 +251,29 @@ describe("setPromptSlotWeight", () => {
   it("no-ops on out-of-range index", () => {
     const slots = baseOnly();
     expect(setPromptSlotWeight(slots, 99, 50)).toEqual(slots);
+  });
+});
+
+describe("prompt slot muting", () => {
+  it("normalizes missing mute state to active", () => {
+    expect(promptSlotMuted(undefined)).toBe(false);
+    expect(promptSlotMuted({ text: "x", weight: 100, height: null })).toBe(false);
+    expect(
+      promptSlotMuted({ text: "x", weight: 100, height: null, muted: true }),
+    ).toBe(true);
+  });
+
+  it("toggles one slot without changing its authored weight", () => {
+    const slots: PromptSlots = [
+      { text: "a", weight: 60, height: null },
+      { text: "b", weight: 40, height: null },
+    ];
+    const next = setPromptSlotMuted(slots, 1, true);
+    expect(next).toEqual([
+      { text: "a", weight: 60, height: null },
+      { text: "b", weight: 40, height: null, muted: true },
+    ]);
+    expect(slots[1].muted).toBeUndefined();
   });
 });
 
@@ -347,40 +372,39 @@ describe("vision helpers", () => {
   });
 });
 
-describe("promptPoolSum + promptPoolIsValid", () => {
-  it("promptPoolSum totals all weights", () => {
-    expect(promptPoolSum(baseOnly())).toBe(100);
-    expect(
-      promptPoolSum([
-        { text: "", weight: 30, height: null },
-        { text: "", weight: 70, height: null },
-      ]),
-    ).toBe(100);
-    expect(promptPoolSum([])).toBe(0);
-  });
-
+describe("promptPoolIsValid", () => {
   it("promptPoolIsValid: empty pool is invalid", () => {
     expect(promptPoolIsValid([])).toBe(false);
   });
 
-  it("promptPoolIsValid: sum === 100 is valid", () => {
+  it("accepts any total with a positive, unmuted slot", () => {
     expect(promptPoolIsValid(baseOnly())).toBe(true);
     expect(
       promptPoolIsValid([
-        { text: "", weight: 60, height: null },
-        { text: "", weight: 40, height: null },
+        { text: "", weight: 12, height: null },
+        { text: "", weight: 3, height: null },
       ]),
+    ).toBe(true);
+    expect(
+      promptPoolIsValid([{ text: "", weight: 1, height: null }]),
     ).toBe(true);
   });
 
-  it("promptPoolIsValid: any other sum is invalid", () => {
-    expect(
-      promptPoolIsValid([{ text: "", weight: 50, height: null }]),
-    ).toBe(false);
+  it("requires at least one positive, unmuted slot", () => {
+    const slots: PromptSlots = [
+      { text: "a", weight: 60, height: null },
+      { text: "b", weight: 40, height: null, muted: true },
+    ];
+    expect(promptPoolHasActiveSlot(slots)).toBe(true);
+    expect(promptPoolIsValid(slots)).toBe(true);
+
+    const allMuted = setPromptSlotMuted(slots, 0, true);
+    expect(promptPoolHasActiveSlot(allMuted)).toBe(false);
+    expect(promptPoolIsValid(allMuted)).toBe(false);
     expect(
       promptPoolIsValid([
-        { text: "", weight: 60, height: null },
-        { text: "", weight: 30, height: null },
+        { text: "a", weight: 0, height: null },
+        { text: "b", weight: 0, height: null },
       ]),
     ).toBe(false);
   });
@@ -433,13 +457,29 @@ describe("pickPromptSlot", () => {
     );
   });
 
-  it("falls back to uniform when all weights are 0 (degenerate)", () => {
+  it("normalizes arbitrary relative totals during selection", () => {
+    const slots: PromptSlots = [
+      { text: "a", weight: 2, height: null },
+      { text: "b", weight: 1, height: null },
+    ];
+    expect(pickPromptSlot(slots, () => 0.65)).toEqual({ text: "a", index: 0 });
+    expect(pickPromptSlot(slots, () => 0.75)).toEqual({ text: "b", index: 1 });
+  });
+
+  it("returns null when all weights are 0", () => {
     const slots: PromptSlots = [
       { text: "a", weight: 0, height: null },
       { text: "b", weight: 0, height: null },
     ];
-    const pick = pickPromptSlot(slots, seededRng(7));
-    expect(pick).not.toBeNull();
-    expect(["a", "b"]).toContain(pick!.text);
+    expect(pickPromptSlot(slots, seededRng(7))).toBeNull();
+  });
+
+  it("skips muted slots while retaining original indices", () => {
+    const slots: PromptSlots = [
+      { text: "a", weight: 50, height: null, muted: true },
+      { text: "b", weight: 30, height: null },
+      { text: "c", weight: 20, height: null },
+    ];
+    expect(pickPromptSlot(slots, () => 0)).toEqual({ text: "b", index: 1 });
   });
 });

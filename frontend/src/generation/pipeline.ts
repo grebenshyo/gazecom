@@ -128,8 +128,9 @@ export async function generateOnce(
     // 2. Resolve prompt.
     //   Pick a slot from the rotation pool, run its text through
     //   `replaceAllPlaceholders`, and use it. The Generate-button
-    //   disabled gate already blocks invalid pools (sum !== 100), so
-    //   pickPromptSlot here returns a valid slot. The picked index is
+    //   disabled gate already blocks pools without an active slot, so
+    //   pickPromptSlot here returns a valid slot. Relative weights are
+    //   normalized implicitly during selection. The picked index is
     //   pushed into the store so the panel can highlight that row.
     //   Per-slot auto enhancement runs first: "send" uses the enhanced text
     //   for this request, while "evolve" also writes it back into the slot.

@@ -294,6 +294,7 @@ describe("useStore — persistence", () => {
       {
         text: "describe",
         weight: 100,
+        muted: true,
         height: null,
         derivedText: "large generated prompt",
         derivedHeight: 128,
@@ -306,6 +307,7 @@ describe("useStore — persistence", () => {
       {
         text: "describe",
         weight: 100,
+        muted: true,
         height: null,
         derivedText: "",
         derivedHeight: 128,

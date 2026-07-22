@@ -50,9 +50,6 @@ export function MainActions({
   const poolEmpty = Object.keys(pinnedWorkflows).length === 0;
   const hasActiveWorkflow =
     Object.keys(activePool(pinnedWorkflows, mutedWorkflows)).length > 0;
-  // Prompt pool: at least one base slot always exists (the data
-  // model guarantees it), so we just need the sum-100 invariant. The
-  // panel surfaces the matching warning when this fails.
   const promptPoolValid = promptPoolIsValid(pinnedPrompts);
 
   const handleGenerateClick = () => {
@@ -135,8 +132,8 @@ export function MainActions({
       <Button
         variant="primary"
         onClick={handleGenerateClick}
-        // Two blockers: no positive, unmuted workflow to pick, or an invalid
-        // prompt-percentage pool. Workflow totals are normalized implicitly.
+        // Both pools use relative weights normalized during selection. The
+        // only blocker is having no positive, unmuted entry to pick.
         // Stop remains clickable while a generation is running.
         disabled={!isGenerating && (!hasActiveWorkflow || !promptPoolValid)}
         title={
@@ -147,7 +144,7 @@ export function MainActions({
               : !hasActiveWorkflow
                 ? "Unmute a workflow or give one a weight above 0"
                 : !promptPoolValid
-                  ? "Prompt weights must sum to 100%"
+                  ? "Unmute a prompt slot with a weight above 0"
                   : undefined
         }
       >

@@ -85,7 +85,75 @@ body.gz-theme-dark .gz-panel-header {
   opacity: 1;
 }
 
-/* Workflow pool row — label, mute toggle, weight, percent, and remove. */
+/* Shared weight field: the mute circle lives inside the same bordered shell
+   as the numeric value for both workflow and prompt pools. */
+.gz-weight-input {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+}
+
+.gz-weight-input:focus-within {
+  border-color: var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-weight-input__mute {
+  flex: 0 0 20px;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.65;
+}
+
+.gz-weight-input__mute::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--text-color);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.gz-weight-input__mute:hover,
+.gz-weight-input__mute--active {
+  opacity: 1;
+}
+
+.gz-weight-input__mute:focus-visible {
+  outline: 1px solid var(--gz-section-accent, var(--button-bg));
+  outline-offset: -2px;
+}
+
+.gz-weight-input__mute--active::before {
+  border-color: var(--gz-section-accent, var(--button-bg));
+  background: var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-weight-input__field {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dropdown-text);
+  outline: none;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.gz-weight-input--muted .gz-weight-input__field {
+  opacity: 0.4;
+}
+
+/* Workflow pool row — label, integrated weight control, and remove. */
 .gz-pool-row {
   display: flex;
   align-items: center;
@@ -103,70 +171,26 @@ body.gz-theme-dark .gz-panel-header {
   opacity: 0.85;
 }
 
-.gz-pool-row__mute {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  opacity: 0.65;
-}
-
-.gz-pool-row__mute::before {
-  content: "";
-  width: 11px;
-  height: 11px;
-  box-sizing: border-box;
-  border: 1px solid var(--text-color);
-  border-radius: 50%;
-  background: transparent;
-}
-
-.gz-pool-row__mute:hover {
-  opacity: 1;
-}
-
-.gz-pool-row__mute:focus-visible {
-  outline: 1px solid var(--gz-section-accent, var(--button-bg));
-  outline-offset: 1px;
-}
-
-.gz-pool-row__mute--active::before {
-  border-color: var(--gz-section-accent, var(--button-bg));
-  background: var(--gz-section-accent, var(--button-bg));
-}
-
-.gz-pool-row__mute--active {
-  opacity: 1;
-}
-
-.gz-pool-row--muted .gz-pool-row__label,
-.gz-pool-row--muted .gz-pool-row__weight-input {
+.gz-pool-row--muted .gz-pool-row__label {
   opacity: 0.4;
+}
+
+.gz-pool-row__weight-control {
+  flex: 0 0 72px;
+  height: 24px;
 }
 
 /* Compact integer input for the weight. Hide the browser spinners so it
    visually matches `.gz-numinput__input` (used by the canvas-bounds
    inputs) but stays inline-sized for the row. */
 .gz-pool-row__weight-input {
-  flex: 0 0 52px;
-  padding: 3px 6px;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  background: var(--dropdown-bg);
-  color: var(--dropdown-text);
+  flex: 1;
+  width: 0;
+  padding: 3px 6px 3px 0;
   font-family: inherit;
   font-size: 0.9em;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  outline: none;
-  -webkit-appearance: textfield;
-  -moz-appearance: textfield;
-  appearance: textfield;
 }
 
 .gz-pool-row__weight-input::-webkit-outer-spin-button,
@@ -399,24 +423,22 @@ body.gz-theme-dark .gz-section--key-view { --gz-section-accent: #bfd0e8; }
   align-items: center;
 }
 
-/* Weight badge: small integer input. */
-.gz-prompt-slot__weight {
-  width: 46px;
+/* Prompt weight uses the same integrated mute/value shell as workflows. */
+.gz-prompt-slot__weight-control {
+  flex: 0 0 64px;
+  width: 64px;
   height: 22px;
-  padding: 0 4px;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  background: var(--dropdown-bg);
-  color: var(--dropdown-text);
+}
+
+.gz-prompt-slot__weight {
+  flex: 1;
+  width: 0;
+  padding: 0 4px 0 0;
   font-family: inherit;
   font-size: 0.8em;
   font-variant-numeric: tabular-nums;
   text-align: right;
-  outline: none;
   box-sizing: border-box;
-  -webkit-appearance: textfield;
-  -moz-appearance: textfield;
-  appearance: textfield;
 }
 
 .gz-prompt-slot__weight::-webkit-outer-spin-button,

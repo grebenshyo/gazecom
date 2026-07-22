@@ -6,18 +6,21 @@
  * types into editable textareas, each carrying its own weight AND its
  * own user-resized height in px. Slots may also opt into automatic LLM
  * enhancement when they are picked. Order matters (slot 0 is the protected
- * base) and ResizeObserver feedback writes back per-slot.
+ * base), slots can be temporarily muted without changing their authored
+ * relative weights, and ResizeObserver feedback writes back per-slot.
  *
  * Conventions mirror the workflow pool:
  *   - Weights are integers 0–100.
- *   - The pool is "valid" iff non-empty AND weights sum to exactly 100.
- *   - Single-slot pool forces its weight to 100 (slot 0 alone).
+ *   - Weights are relative and normalized implicitly during selection.
+ *   - The pool is valid when at least one positive slot is unmuted.
  *   - All helpers are pure and preserve slot order.
  */
 
 export interface PromptSlot {
   text: string;
   weight: number;
+  /** Temporarily exclude this slot from weighted selection. */
+  muted?: boolean;
   /** User-set textarea height in px. Null = use CSS `rows={3}` default. */
   height: number | null;
   /** Auto-run slot enhancement when this slot is picked for generation. */
@@ -37,6 +40,7 @@ export type PromptAutoEnhanceMode = "off" | "send" | "evolve";
 export const EMPTY_SLOT: PromptSlot = {
   text: "",
   weight: 0,
+  muted: false,
   height: null,
   autoEnhanceMode: "off",
   visionEnabled: false,
@@ -46,8 +50,8 @@ export const EMPTY_SLOT: PromptSlot = {
 
 /**
  * Append a new empty slot (`text: ""`, `weight: 0`, `height: null`).
- * The new slot defaults to weight 0 so adding it doesn't disturb the
- * existing sum — the user raises it deliberately and lowers others.
+ * The new slot defaults to weight 0 so adding it doesn't affect selection
+ * until the user deliberately gives it weight.
  * Returns a new array; the input is not mutated.
  */
 export function addPromptSlot(slots: PromptSlots): PromptSlots {
@@ -107,8 +111,7 @@ export function promptSlotsForPersistence(slots: PromptSlots): PromptSlots {
 }
 
 /**
- * Update one slot's weight. Clamps to integer 0–100. Single-slot pool
- * (length === 1) forces the slot to 100 regardless of input.
+ * Update one slot's relative weight. Clamps to integer 0–100.
  */
 export function setPromptSlotWeight(
   slots: PromptSlots,
@@ -116,14 +119,24 @@ export function setPromptSlotWeight(
   weight: number,
 ): PromptSlots {
   if (index < 0 || index >= slots.length) return slots.slice();
-  if (slots.length === 1) {
-    const next = slots.slice();
-    next[0] = { ...next[0], weight: 100 };
-    return next;
-  }
   const clamped = Math.max(0, Math.min(100, Math.round(weight)));
   const next = slots.slice();
   next[index] = { ...next[index], weight: clamped };
+  return next;
+}
+
+export function promptSlotMuted(slot: PromptSlot | undefined): boolean {
+  return slot?.muted === true;
+}
+
+export function setPromptSlotMuted(
+  slots: PromptSlots,
+  index: number,
+  muted: boolean,
+): PromptSlots {
+  if (index < 0 || index >= slots.length) return slots.slice();
+  const next = slots.slice();
+  next[index] = { ...next[index], muted };
   return next;
 }
 
@@ -189,45 +202,36 @@ export function setPromptSlotVisionEnabled(
   return next;
 }
 
-/** Total weight across all slots. Empty pool returns 0. */
-export function promptPoolSum(slots: PromptSlots): number {
-  let s = 0;
-  for (const slot of slots) s += slot.weight;
-  return s;
-}
-
-/**
- * True iff the pool is non-empty AND weights sum to exactly 100. The
- * panel warning + the Generate-button disabled gate both read this.
- */
+/** True when selection has at least one positive, unmuted slot. */
 export function promptPoolIsValid(slots: PromptSlots): boolean {
-  return slots.length > 0 && promptPoolSum(slots) === 100;
+  return promptPoolHasActiveSlot(slots);
+}
+
+export function promptPoolHasActiveSlot(slots: PromptSlots): boolean {
+  return slots.some((slot) => !promptSlotMuted(slot) && slot.weight > 0);
 }
 
 /**
- * Weighted random pick. Returns `{ text, index }` of the chosen slot,
- * or `null` on empty pool. If every weight is 0 (degenerate — should
- * be prevented by the validity gate), falls back to a uniform pick
- * over the slots so we don't loop on rejection sampling.
+ * Weighted random pick over positive, unmuted slots. Returns the original
+ * slot index so downstream transforms keep addressing the correct row.
  */
 export function pickPromptSlot(
   slots: PromptSlots,
   rng: () => number = Math.random,
 ): { text: string; index: number } | null {
-  if (slots.length === 0) return null;
+  const active = slots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot }) => !promptSlotMuted(slot) && slot.weight > 0);
+  if (active.length === 0) return null;
 
-  const total = promptPoolSum(slots);
-  if (total <= 0) {
-    const i = Math.floor(rng() * slots.length);
-    return { text: slots[i].text, index: i };
-  }
+  const total = active.reduce((sum, { slot }) => sum + slot.weight, 0);
 
   let r = rng() * total;
-  for (let i = 0; i < slots.length; i++) {
-    r -= slots[i].weight;
-    if (r <= 0) return { text: slots[i].text, index: i };
+  for (const { slot, index } of active) {
+    r -= slot.weight;
+    if (r <= 0) return { text: slot.text, index };
   }
   // Belt-and-suspenders for floating-point edge cases.
-  const last = slots.length - 1;
-  return { text: slots[last].text, index: last };
+  const last = active[active.length - 1];
+  return { text: last.slot.text, index: last.index };
 }

@@ -309,6 +309,7 @@ function isPromptSlots(value: unknown): boolean {
         isRecord(slot) &&
         typeof slot.text === "string" &&
         isFiniteNumber(slot.weight) &&
+        (slot.muted === undefined || typeof slot.muted === "boolean") &&
         (slot.height === null || isFiniteNumber(slot.height)) &&
         (slot.autoEnhanceMode === undefined ||
           isOneOf(slot.autoEnhanceMode, ["off", "send", "evolve"])) &&

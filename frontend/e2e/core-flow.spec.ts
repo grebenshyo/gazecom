@@ -141,6 +141,32 @@ test("control panel renders all sections", async ({ page }) => {
   await expect(page.getByRole("checkbox", { name: "Fit to frame" })).toBeVisible();
 });
 
+test("prompt slots can be muted and retain that state across reloads", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /close/i }).click();
+
+  const weight = page.getByRole("spinbutton", { name: "Prompt slot 1 weight" });
+  await weight.fill("42");
+  await expect(weight).toHaveValue("42");
+
+  await page.getByRole("button", { name: "Mute prompt slot 1" }).click();
+  await expect(
+    page.getByText("Unmute a prompt slot with a weight above 0 to generate."),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Unmute prompt slot 1" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Unmute prompt slot 1" }).click();
+  await expect(weight).toHaveValue("42");
+  await expect(
+    page.getByText("Unmute a prompt slot with a weight above 0 to generate."),
+  ).toBeHidden();
+});
+
 test("auto-collapse keeps only the newly opened panel section expanded", async ({
   page,
 }) => {

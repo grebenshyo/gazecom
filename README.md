@@ -115,10 +115,12 @@ loaded from their upstream CDNs when first selected. See
 Prompts and ComfyUI workflows each live in independent **weighted pools**, so a
 run can use one fixed choice or rotate probabilistically. Prompt slots can be
 sent directly, rewritten by a local LLM (once or self-evolving), or produced
-from the current frame by a vision model. A pinned workflow can be muted without
-changing its weight, then unmuted to restore the same pool configuration.
-Workflow values are relative weights and are normalized automatically; unlike
-prompt-slot percentages, they do not need to total 100.
+from the current frame by a vision model. Pinned workflows and prompt slots can
+be muted without changing their weights, then unmuted to restore the same pool
+configuration. Workflow and prompt values are relative weights and are
+normalized automatically; neither pool needs to total 100. Muted and
+zero-weight entries are excluded before normalization, and generation requires
+at least one positive, unmuted entry in each pool.
 
 ### Prompting and models
 

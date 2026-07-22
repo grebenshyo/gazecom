@@ -249,8 +249,8 @@ export interface AppState {
   promptList: string;
   /**
    * Prompt rotation pool — an ordered array of editable slots. Each
-   * carries its own text, weight (integer 0–100; sum must equal 100
-   * for the pool to be valid), and persisted textarea height. Slot 0
+   * carries its own text, relative weight (integer 0–100), and persisted
+   * textarea height. Slot 0
    * is the un-removable "base" slot (replaces the legacy standalone
    * prompt textarea).
    */
@@ -463,8 +463,8 @@ function loadInitial(): AppState {
     firstPatchPosition: null,
 
     promptList: readJSON<string>(StorageKeys.promptList, "Secession Trees Art"),
-    // Fresh installs get a single base slot with weight 100 (sum=100,
-    // valid out of the box). Reads any legacy persisted value via
+    // Fresh installs get a single base slot with weight 100 (valid out of
+    // the box). Reads any legacy persisted value via
     // readJSON; if the shape is the old Record<string, number> it'll
     // deserialize as an array-ish object that fails the array check
     // and we fall back to the default. Single-user project, no

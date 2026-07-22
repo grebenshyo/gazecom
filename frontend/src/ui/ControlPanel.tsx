@@ -54,17 +54,18 @@ import {
   PROMPT_LIST_NAMES,
   addPromptSlot,
   nextPromptAutoEnhanceMode,
+  promptPoolHasActiveSlot,
   promptSlotAutoEnhanceMode,
+  promptSlotMuted,
   promptSlotVisionEnabled,
   promptLists,
-  promptPoolIsValid,
-  promptPoolSum,
   replaceAllPlaceholders,
   removePromptSlot,
   setPromptSlotAutoEnhanceMode,
   setPromptSlotDerivedHeight,
   setPromptSlotDerivedText,
   setPromptSlotHeight,
+  setPromptSlotMuted,
   setPromptSlotText,
   setPromptSlotVisionEnabled,
   setPromptSlotWeight,
@@ -415,6 +416,7 @@ export function ControlPanel({
   const workflowByPath = new Map(
     availableWorkflows.map((workflow) => [workflow.path, workflow]),
   );
+  const promptHasActiveSlot = promptPoolHasActiveSlot(s.pinnedPrompts);
   const llmModelOptions = (() => {
     const placeholder =
       llmModelsStatus === "loading" ? "Loading models..." : "Select model...";
@@ -546,8 +548,10 @@ export function ControlPanel({
             key={index}
             index={index}
             slot={slot}
-            isOnly={s.pinnedPrompts.length === 1}
-            isActivePick={index === s.lastPickedPromptIndex}
+            isActivePick={
+              index === s.lastPickedPromptIndex && !promptSlotMuted(slot)
+            }
+            muted={promptSlotMuted(slot)}
             enhancing={enhancingSlotIndex === index}
             anyEnhancing={enhancingSlotIndex !== null}
             autoEnhanceMode={promptSlotAutoEnhanceMode(slot)}
@@ -564,6 +568,19 @@ export function ControlPanel({
                 "pinnedPrompts",
                 setPromptSlotWeight(s.pinnedPrompts, index, weight),
               )
+            }
+            onMutedChange={(muted) =>
+              s.patch({
+                pinnedPrompts: setPromptSlotMuted(
+                  s.pinnedPrompts,
+                  index,
+                  muted,
+                ),
+                lastPickedPromptIndex:
+                  muted && s.lastPickedPromptIndex === index
+                    ? null
+                    : s.lastPickedPromptIndex,
+              })
             }
             onHeightChange={(h) =>
               s.set(
@@ -676,12 +693,9 @@ export function ControlPanel({
         >
           + Add prompt slot
         </Button>
-        {!promptPoolIsValid(s.pinnedPrompts) && (
+        {!promptHasActiveSlot && (
           <p className="gz-pool-warning">
-            ⚠ Weights must sum to 100% (currently
-            {" "}
-            {promptPoolSum(s.pinnedPrompts)}%). Generation is disabled
-            until you fix this.
+            Unmute a prompt slot with a weight above 0 to generate.
           </p>
         )}
         {/* List / Template / LLM controls — revealed by the ⚙ in
@@ -818,44 +832,48 @@ export function ControlPanel({
                   <span className="gz-pool-row__label" title={path}>
                     {label}
                   </span>
-                  <button
-                    className={`gz-pool-row__mute${muted ? " gz-pool-row__mute--active" : ""}`}
-                    type="button"
-                    aria-label={`${muted ? "Unmute" : "Mute"} ${label}`}
-                    aria-pressed={muted}
-                    title={muted ? "Unmute workflow" : "Mute workflow"}
-                    onClick={() =>
-                      s.patch({
-                        mutedWorkflows: muted
-                          ? s.mutedWorkflows.filter((item) => item !== path)
-                          : [...s.mutedWorkflows, path],
-                        lastPickedWorkflow:
-                          muted || s.lastPickedWorkflow !== path
-                            ? s.lastPickedWorkflow
-                            : null,
-                      })
-                    }
-                  />
-                  <input
-                    className="gz-pool-row__weight-input"
-                    aria-label={`${label} weight`}
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={weight}
-                    disabled={muted}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") return;
-                      const n = Number(raw);
-                      if (!Number.isFinite(n)) return;
-                      s.set(
-                        "pinnedWorkflows",
-                        setPoolWeight(s.pinnedWorkflows, path, n),
-                      );
-                    }}
-                  />
+                  <div
+                    className={`gz-weight-input gz-pool-row__weight-control${muted ? " gz-weight-input--muted" : ""}`}
+                  >
+                    <button
+                      className={`gz-weight-input__mute${muted ? " gz-weight-input__mute--active" : ""}`}
+                      type="button"
+                      aria-label={`${muted ? "Unmute" : "Mute"} ${label}`}
+                      aria-pressed={muted}
+                      title={muted ? "Unmute workflow" : "Mute workflow"}
+                      onClick={() =>
+                        s.patch({
+                          mutedWorkflows: muted
+                            ? s.mutedWorkflows.filter((item) => item !== path)
+                            : [...s.mutedWorkflows, path],
+                          lastPickedWorkflow:
+                            muted || s.lastPickedWorkflow !== path
+                              ? s.lastPickedWorkflow
+                              : null,
+                        })
+                      }
+                    />
+                    <input
+                      className="gz-weight-input__field gz-pool-row__weight-input"
+                      aria-label={`${label} weight`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={weight}
+                      disabled={muted}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") return;
+                        const n = Number(raw);
+                        if (!Number.isFinite(n)) return;
+                        s.set(
+                          "pinnedWorkflows",
+                          setPoolWeight(s.pinnedWorkflows, path, n),
+                        );
+                      }}
+                    />
+                  </div>
                   <button
                     className="gz-pool-row__remove"
                     type="button"
@@ -1348,8 +1366,8 @@ const TOP_LEVEL_SECTION_KEYS = [
 function PromptSlotRow({
   index,
   slot,
-  isOnly,
   isActivePick,
+  muted,
   enhancing,
   anyEnhancing,
   autoEnhanceMode,
@@ -1357,6 +1375,7 @@ function PromptSlotRow({
   onFocus,
   onTextChange,
   onWeightChange,
+  onMutedChange,
   onHeightChange,
   onDerivedHeightChange,
   onRemove,
@@ -1366,8 +1385,8 @@ function PromptSlotRow({
 }: {
   index: number;
   slot: PromptSlot;
-  isOnly: boolean;
   isActivePick: boolean;
+  muted: boolean;
   enhancing: boolean;
   anyEnhancing: boolean;
   autoEnhanceMode: PromptAutoEnhanceMode;
@@ -1375,6 +1394,7 @@ function PromptSlotRow({
   onFocus: () => void;
   onTextChange: (text: string) => void;
   onWeightChange: (weight: number) => void;
+  onMutedChange: (muted: boolean) => void;
   onHeightChange: (height: number) => void;
   onDerivedHeightChange: (height: number) => void;
   onRemove: () => void;
@@ -1437,7 +1457,7 @@ function PromptSlotRow({
 
   return (
     <div
-      className={`gz-prompt-slot${isActivePick ? " gz-prompt-slot--active" : ""}`}
+      className={`gz-prompt-slot${isActivePick ? " gz-prompt-slot--active" : ""}${muted ? " gz-prompt-slot--muted" : ""}`}
     >
       <div className="gz-prompt-slot__input-wrap">
         <textarea
@@ -1454,26 +1474,39 @@ function PromptSlotRow({
           style={slot.height ? { height: slot.height } : undefined}
         />
         <div className="gz-prompt-slot__controls">
-          <input
-            className="gz-prompt-slot__weight"
-            type="number"
-            min={0}
-            max={100}
-            step={1}
-            value={slot.weight}
-            disabled={isOnly}
-            title={
-              isOnly
-                ? "Weight is locked at 100% for a single-slot pool"
-                : "Slot weight (must sum to 100% across all slots)"
-            }
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === "") return;
-              const n = Number(raw);
-              if (Number.isFinite(n)) onWeightChange(n);
-            }}
-          />
+          <div
+            className={`gz-weight-input gz-prompt-slot__weight-control${muted ? " gz-weight-input--muted" : ""}`}
+          >
+            <button
+              className={`gz-weight-input__mute${muted ? " gz-weight-input__mute--active" : ""}`}
+              type="button"
+              aria-label={`${muted ? "Unmute" : "Mute"} prompt slot ${index + 1}`}
+              aria-pressed={muted}
+              title={muted ? "Unmute prompt slot" : "Mute prompt slot"}
+              onClick={() => onMutedChange(!muted)}
+            />
+            <input
+              className="gz-weight-input__field gz-prompt-slot__weight"
+              aria-label={`Prompt slot ${index + 1} weight`}
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={slot.weight}
+              disabled={muted}
+              title={
+                muted
+                  ? "Unmute this slot to change its weight"
+                  : "Relative slot weight"
+              }
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") return;
+                const n = Number(raw);
+                if (Number.isFinite(n)) onWeightChange(n);
+              }}
+            />
+          </div>
           <button
             className="gz-prompt-slot__enhance"
             type="button"

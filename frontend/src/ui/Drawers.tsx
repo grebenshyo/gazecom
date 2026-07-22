@@ -177,11 +177,11 @@ function HelpPanel({
           <h4>Prompting</h4>
           <p>
             Prompt slots form a second weighted pool. Add slots for alternatives
-            and set their weights to total 100%; a single slot remains at 100%.
-            Focus a slot before choosing from the Prompting cog: List selects a
-            built-in collection, and Template writes one entry from that list
-            into the focused slot. Templates are starting text, not additional
-            pinned slots.
+            and give them relative weights; the app normalizes the active values
+            automatically, so they do not need to total 100. Focus a slot before
+            choosing from the Prompting cog: List selects a built-in collection,
+            and Template writes one entry from that list into the focused slot.
+            Templates are starting text, not additional pinned slots.
           </p>
           <p>
             Template placeholders are randomized when a prompt is sent. The
@@ -192,6 +192,13 @@ function HelpPanel({
             model and editable LLM wrapper. <code>{"{prompt}"}</code> marks
             where the slot text enters that wrapper; without it, the text is
             appended.
+          </p>
+          <p>
+            The circle inside a slot's weight field temporarily mutes that
+            prompt without changing its weight. Muted slots remain editable
+            and return to the same pool configuration when unmuted. Muted and
+            zero-weight slots are excluded from selection; generation requires
+            at least one positive, unmuted prompt.
           </p>
           <ul className="gz-guide-symbols">
             <li>
@@ -246,10 +253,11 @@ function HelpPanel({
           <p>
             When generation selects a different workflow, Steps adopts that
             workflow's declared default; you can override it in the compact
-            input. The M button temporarily mutes a workflow while preserving
-            its weight. Active values are normalized automatically, so only
-            their relative proportions matter. Removing or renaming a workflow
-            removes its stale pin without rewriting the remaining weights.
+            input. The circle inside each weight field temporarily mutes that
+            workflow while preserving its weight. Active values are normalized
+            automatically, so only their relative proportions matter. Removing
+            or renaming a workflow removes its stale pin without rewriting the
+            remaining weights.
           </p>
           <aside className="gz-guide-note">
             <strong>Custom workflows.</strong> Downloaded builds keep the
