@@ -16,6 +16,8 @@ for image generation, with optional language and vision steps through
 
 > Current release: v0.2.1. First published as v0.2.0; evolved from a 2025 prototype.
 
+![gazeCOM interface panels for prompting, workflows, saliency settings, and advanced controls](assets/gazecom-panels.jpg)
+
 ## What you need
 
 - A running **ComfyUI** reachable over HTTP — run it however you like
