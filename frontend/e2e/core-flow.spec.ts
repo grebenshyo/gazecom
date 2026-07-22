@@ -156,6 +156,17 @@ test("VLM prompt height survives collapsing the command palette", async ({
   await expect(vlmPrompt).toHaveCSS("height", "180px");
 
   await page.getByRole("button", { name: "Collapse panel" }).click();
+  await expect(page.getByText("its. 0", { exact: true })).toBeVisible();
+  const collapsedPanel = page.locator("aside.gz-control-panel");
+  const collapsedHeader = page.locator("header.gz-panel-header");
+  await expect
+    .poll(async () => {
+      const panelBox = await collapsedPanel.boundingBox();
+      const headerBox = await collapsedHeader.boundingBox();
+      if (!panelBox || !headerBox) return Infinity;
+      return Math.abs(panelBox.height - headerBox.height);
+    })
+    .toBeLessThanOrEqual(2);
   await page.getByRole("button", { name: "Expand panel" }).click();
 
   await expect(page.getByRole("textbox", { name: "VLM prompt" })).toHaveCSS(

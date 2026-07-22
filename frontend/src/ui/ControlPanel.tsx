@@ -465,7 +465,11 @@ export function ControlPanel({
   };
 
   return (
-    <aside ref={panelRef} className="gz-control-panel" style={panelStyle}>
+    <aside
+      ref={panelRef}
+      className={`gz-control-panel${s.panelMinimized ? " gz-control-panel--minimized" : ""}`}
+      style={panelStyle}
+    >
       <header
         className="gz-panel-header"
         onPointerDown={onDragStart}
@@ -473,8 +477,12 @@ export function ControlPanel({
         onPointerUp={onDragEnd}
         onPointerCancel={onDragEnd}
       >
-        {/* drag handle, intentionally no title — legacy parity */}
-        <span className="gz-panel-grip" aria-hidden="true" />
+        <span
+          className="gz-panel-counter"
+          title="Patches generated since last clear"
+        >
+          its. {s.patchesSinceClear}
+        </span>
         <button
           className="gz-panel-minimize"
           aria-label={s.panelMinimized ? "Expand panel" : "Collapse panel"}
@@ -1291,15 +1299,6 @@ export function ControlPanel({
           (backup/v1 index.html:264-267) and absorbs the theme toggle into
           the same row of circle buttons. */}
       <div className="gz-panel-utilities">
-        {/* Read-only live count of applied patches since the last
-            canvas clear. `margin-right: auto` pushes it to the left
-            edge while the button cluster stays right-aligned. */}
-        <span
-          className="gz-panel-counter"
-          title="Patches generated since last clear"
-        >
-          its. {s.patchesSinceClear}
-        </span>
         <ThemeToggle />
         <Drawers />
       </div>

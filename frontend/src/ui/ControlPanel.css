@@ -33,8 +33,21 @@
   user-select: text;
 }
 
-/* Drag handle (legacy .panel-drag-handle). Blank by request — no title
-   text, no grip dots, just the colored bar with the minimize button. */
+/* With the body unmounted, remove expanded-layout spacing so the collapsed
+   palette is exactly its draggable header rather than a header plus blank bar. */
+.gz-control-panel--minimized {
+  padding-bottom: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.gz-control-panel--minimized .gz-panel-header {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+/* Drag handle (legacy .panel-drag-handle). The live iteration count stays
+   visible when collapsed; the minimize button remains at the right edge. */
 .gz-panel-header {
   cursor: move;
   display: flex;
@@ -497,8 +510,7 @@ body.gz-theme-dark .gz-pool-warning {
 
 /* Cluster of three circle buttons (theme + settings + help) at the bottom
    of the panel body — verbatim layout port of legacy `.help-container`
-   (backup/v1 css/styles.css:594-600), now with a live patches-since-clear
-   counter occupying the leftover space on the left. */
+   (backup/v1 css/styles.css:594-600). */
 .gz-panel-utilities {
   display: flex;
   justify-content: flex-end;
@@ -507,17 +519,15 @@ body.gz-theme-dark .gz-pool-warning {
   margin-top: 10px;
 }
 
-/* Pushes the counter to the left edge of the row; subsequent flex
-   children (the button cluster) remain right-aligned via the parent's
-   justify-content. Tabular-nums prevents width jitter as the count
-   crosses digit boundaries (9→10, 99→100). */
+/* Pushes the counter to the header's left edge. Tabular numerals prevent
+   width jitter, and pointer-events keep its area available for dragging. */
 .gz-panel-counter {
   margin-right: auto;
   font-size: 0.85em;
   font-variant-numeric: tabular-nums;
   color: var(--text-color);
   opacity: 0.6;
-  cursor: default;
+  pointer-events: none;
 }
 
 /* Brand label — bottom-right of panel (legacy .panel-brand). */
