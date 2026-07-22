@@ -73,7 +73,7 @@ async function stubBackend(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ status: "ok", version: "0.2.0" }),
+      body: JSON.stringify({ status: "ok", version: "0.2.1" }),
     });
   });
   await page.route("**/api/config", async (route) => {
@@ -118,6 +118,9 @@ test("welcome modal appears on first visit and closes", async ({ page }) => {
   await page.goto("/");
   const modal = page.getByRole("heading", { name: /welcome to gazecom/i });
   await expect(modal).toBeVisible();
+  await expect(
+    page.locator(".gz-modal p").filter({ hasText: /Interface/ }),
+  ).toContainText("workspace view options");
   await page.getByRole("button", { name: /close/i }).click();
   await expect(modal).toBeHidden();
 });
@@ -135,7 +138,37 @@ test("control panel renders all sections", async ({ page }) => {
   }
 
   await page.locator("button.gz-section__title").filter({ hasText: /^View/ }).click();
-  await expect(page.getByRole("button", { name: "Medium" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Fit to frame" })).toBeVisible();
+});
+
+test("auto-collapse keeps only the newly opened panel section expanded", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /close/i }).click();
+  const section = (name: string) =>
+    page.locator("button.gz-section__title").filter({
+      hasText: new RegExp(`^${name}`),
+    });
+
+  await page
+    .locator('button.gz-drawer-trigger[aria-label="Settings"]')
+    .click();
+  const drawer = page.locator("body > aside.gz-drawer");
+  await drawer
+    .getByRole("checkbox", { name: "Auto-collapse panels" })
+    .check();
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await section("Advanced").click();
+
+  await expect(section("Advanced")).toHaveAttribute("aria-expanded", "true");
+  for (const name of ["Prompting", "Workflow", "Settings", "View"]) {
+    await expect(section(name)).toHaveAttribute("aria-expanded", "false");
+  }
+
+  await section("Workflow").click();
+  await expect(section("Workflow")).toHaveAttribute("aria-expanded", "true");
+  await expect(section("Advanced")).toHaveAttribute("aria-expanded", "false");
 });
 
 test("VLM prompt height survives collapsing the command palette", async ({
@@ -191,8 +224,14 @@ test("settings drawer escapes the panel and implicitly saves hosts", async ({
 
   const drawer = page.locator("body > aside.gz-drawer");
   await expect(drawer).toBeVisible();
+  await expect(drawer.getByText("General", { exact: true })).toBeVisible();
   await expect(
     drawer.getByRole("checkbox", { name: "Skip provider errors" }),
+  ).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Medium" })).toBeVisible();
+  await expect(drawer.getByRole("slider", { name: "Frame zoom" })).toBeVisible();
+  await expect(
+    drawer.getByRole("checkbox", { name: "Auto-collapse panels" }),
   ).toBeVisible();
 
   const comfyHost = drawer.getByRole("textbox", { name: "ComfyUI host" });
@@ -368,6 +407,9 @@ test("workflows populate the grouped color-coded picker", async ({
     .click();
 
   const workflowPicker = page.getByRole("button", { name: "Pool" });
+  await expect(
+    page.getByText("Pick at least one workflow to generate."),
+  ).toBeVisible();
   await workflowPicker.click();
   await expect(page.getByRole("group", { name: "IMG" })).toBeVisible();
   await expect(page.getByRole("group", { name: "EDIT" })).toBeVisible();
@@ -380,6 +422,27 @@ test("workflows populate the grouped color-coded picker", async ({
   await page.getByRole("option", { name: "flux.2 klein edit" }).click();
   await expect(page.getByText("flux.2 klein edit", { exact: true })).toBeVisible();
   await expect(page.getByRole("spinbutton", { name: "Steps" })).toHaveValue("10");
+
+  const weight = page.getByRole("spinbutton", {
+    name: "flux.2 klein edit weight",
+  });
+  await expect(weight).toHaveValue("100");
+  await page.getByRole("button", { name: "Mute flux.2 klein edit" }).click();
+  await expect(weight).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Generate image" })).toBeDisabled();
+
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Unmute flux.2 klein edit" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Unmute flux.2 klein edit" }).click();
+  await expect(
+    page.getByRole("spinbutton", { name: "flux.2 klein edit weight" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("spinbutton", { name: "flux.2 klein edit weight" })
+    .fill("37");
+  await expect(page.getByRole("button", { name: "Generate image" })).toBeEnabled();
 });
 
 test("iterative-mode toggle enables and updates the delay slider", async ({

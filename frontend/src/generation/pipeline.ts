@@ -55,6 +55,7 @@ import {
 import { getEpoch } from "./epoch";
 import { OllamaLLMProvider, OllamaVLMProvider } from "./llm";
 import {
+  activePool,
   determineWorkflowType,
   pickFromPool,
   type WorkflowType,
@@ -505,7 +506,8 @@ function imageNameFor(workflowType: WorkflowType): string {
 let lastPickedWorkflow: string | null = null;
 
 function resolveWorkflow(): string | null {
-  return pickFromPool(useStore.getState().pinnedWorkflows);
+  const state = useStore.getState();
+  return pickFromPool(activePool(state.pinnedWorkflows, state.mutedWorkflows));
 }
 
 /**

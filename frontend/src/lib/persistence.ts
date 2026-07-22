@@ -27,6 +27,7 @@ export const StorageKeys = {
   canvasVisible: "gengaze.canvasVisible",
   heatmapVisible: "gengaze.heatmapVisible",
   frameZoom: "gengaze.frameZoom",
+  autoCollapsePanels: "gengaze.autoCollapsePanels",
   boundsEnabled: "gengaze.boundsEnabled",
   boundsWidth: "gengaze.boundsWidth",
   boundsHeight: "gengaze.boundsHeight",
@@ -39,6 +40,7 @@ export const StorageKeys = {
   matteColor: "gengaze.matteColor",
   // generation
   pinnedWorkflows: "gengaze.pinnedWorkflows",
+  mutedWorkflows: "gengaze.mutedWorkflows",
   selectedImage: "gengaze.selectedImage",
   steps: "gengaze.steps",
   // prompts
@@ -211,6 +213,7 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "comMode":
     case "compositeMode":
     case "compositeFitEnabled":
+    case "autoCollapsePanels":
     case "canvasVisible":
     case "heatmapVisible":
     case "boundsEnabled":
@@ -238,6 +241,8 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
       return isOneOf(value, ["patch", "composite"]);
     case "pinnedWorkflows":
       return isNumberRecord(value);
+    case "mutedWorkflows":
+      return Array.isArray(value) && value.every((path) => typeof path === "string");
     case "selectedImage":
       return value === null || typeof value === "string";
     case "promptList":

@@ -28,7 +28,6 @@ import {
   useStore,
   type LLMModel,
   type TrackingMode,
-  type UIScale,
 } from "../store";
 import { compositeStore } from "../canvas/CompositeStore";
 import { pullHandle } from "../canvas/pullHandle";
@@ -46,8 +45,6 @@ import {
 } from "../generation/pipeline";
 import {
   addToPool,
-  poolIsValid,
-  poolSum,
   reconcilePool,
   removeFromPool,
   setPoolWeight,
@@ -96,12 +93,6 @@ const HEATMAP_STYLE_OPTIONS: ReadonlyArray<{
   { value: "classic", label: "Blackbody" },
   { value: "grayscale", label: "Grayscale" },
   { value: "spectral", label: "Spectral" },
-];
-
-const UI_SCALE_OPTIONS: ReadonlyArray<{ value: UIScale; label: string }> = [
-  { value: 72, label: "Compact" },
-  { value: 80, label: "Medium" },
-  { value: 100, label: "Large" },
 ];
 
 const AUTO_ENHANCE_ICONS: Record<PromptAutoEnhanceMode, string> = {
@@ -328,8 +319,17 @@ export function ControlPanel({
           list.filter((workflow) => workflow.valid).map((workflow) => workflow.path),
         );
         const reconciled = reconcilePool(live.pinnedWorkflows, validPaths);
-        if (!samePool(live.pinnedWorkflows, reconciled)) {
-          live.set("pinnedWorkflows", reconciled);
+        const reconciledMuted = live.mutedWorkflows.filter((path) =>
+          Object.hasOwn(reconciled, path),
+        );
+        if (
+          !samePool(live.pinnedWorkflows, reconciled) ||
+          reconciledMuted.length !== live.mutedWorkflows.length
+        ) {
+          live.patch({
+            pinnedWorkflows: reconciled,
+            mutedWorkflows: reconciledMuted,
+          });
         }
         if (live.lastPickedWorkflow && !validPaths.has(live.lastPickedWorkflow)) {
           live.set("lastPickedWorkflow", null);
@@ -790,65 +790,94 @@ export function ControlPanel({
             workflows={availableWorkflows}
             pinnedPaths={new Set(Object.keys(s.pinnedWorkflows))}
             onSelect={(picked) => {
-              s.set("pinnedWorkflows", addToPool(s.pinnedWorkflows, picked));
+              s.patch({
+                pinnedWorkflows: addToPool(s.pinnedWorkflows, picked),
+                mutedWorkflows: s.mutedWorkflows.filter(
+                  (path) => path !== picked,
+                ),
+              });
             }}
           />
         )}
         {pinnedEntries.length === 0 ? (
-          <p className="gz-empty">Pick a workflow to pin.</p>
+          <p className="gz-pool-warning">
+            Pick at least one workflow to generate.
+          </p>
         ) : (
           <>
-            {pinnedEntries.map(([path, weight]) => (
-              <div
-                className={`gz-pool-row${path === s.lastPickedWorkflow ? " gz-pool-row--active" : ""}`}
-                key={path}
-              >
-                <span className="gz-pool-row__label" title={path}>
-                  {workflowByPath.get(path)?.label ?? workflowLabelFromPath(path)}
-                </span>
-                <input
-                  className="gz-pool-row__weight-input"
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={weight}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    if (raw === "") return;
-                    const n = Number(raw);
-                    if (!Number.isFinite(n)) return;
-                    s.set(
-                      "pinnedWorkflows",
-                      setPoolWeight(s.pinnedWorkflows, path, n),
-                    );
-                  }}
-                />
-                <span className="gz-pool-row__pct">%</span>
-                <button
-                  className="gz-pool-row__remove"
-                  type="button"
-                  aria-label={`Remove ${path}`}
-                  title="Remove from pool"
-                  onClick={() =>
-                    s.set(
-                      "pinnedWorkflows",
-                      removeFromPool(s.pinnedWorkflows, path),
-                    )
-                  }
+            {pinnedEntries.map(([path, weight]) => {
+              const label =
+                workflowByPath.get(path)?.label ?? workflowLabelFromPath(path);
+              const muted = s.mutedWorkflows.includes(path);
+              const active = path === s.lastPickedWorkflow && !muted;
+              return (
+                <div
+                  className={`gz-pool-row${active ? " gz-pool-row--active" : ""}${muted ? " gz-pool-row--muted" : ""}`}
+                  key={path}
                 >
-                  ×
-                </button>
-              </div>
-            ))}
-            {!poolIsValid(s.pinnedWorkflows) && (
-              <p className="gz-pool-warning">
-                ⚠ Weights must sum to 100% (currently
-                {" "}
-                {poolSum(s.pinnedWorkflows)}%). Generation is disabled
-                until you fix this.
-              </p>
-            )}
+                  <span className="gz-pool-row__label" title={path}>
+                    {label}
+                  </span>
+                  <button
+                    className={`gz-pool-row__mute${muted ? " gz-pool-row__mute--active" : ""}`}
+                    type="button"
+                    aria-label={`${muted ? "Unmute" : "Mute"} ${label}`}
+                    aria-pressed={muted}
+                    title={muted ? "Unmute workflow" : "Mute workflow"}
+                    onClick={() =>
+                      s.patch({
+                        mutedWorkflows: muted
+                          ? s.mutedWorkflows.filter((item) => item !== path)
+                          : [...s.mutedWorkflows, path],
+                        lastPickedWorkflow:
+                          muted || s.lastPickedWorkflow !== path
+                            ? s.lastPickedWorkflow
+                            : null,
+                      })
+                    }
+                  />
+                  <input
+                    className="gz-pool-row__weight-input"
+                    aria-label={`${label} weight`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={weight}
+                    disabled={muted}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") return;
+                      const n = Number(raw);
+                      if (!Number.isFinite(n)) return;
+                      s.set(
+                        "pinnedWorkflows",
+                        setPoolWeight(s.pinnedWorkflows, path, n),
+                      );
+                    }}
+                  />
+                  <button
+                    className="gz-pool-row__remove"
+                    type="button"
+                    aria-label={`Remove ${path}`}
+                    title="Remove from pool"
+                    onClick={() =>
+                      s.patch({
+                        pinnedWorkflows: removeFromPool(
+                          s.pinnedWorkflows,
+                          path,
+                        ),
+                        mutedWorkflows: s.mutedWorkflows.filter(
+                          (item) => item !== path,
+                        ),
+                      })
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </>
         )}
         <label className="gz-workflow-steps">
@@ -1213,31 +1242,6 @@ export function ControlPanel({
         collapsible
         onReset={() => s.resetSection("view")}
       >
-        <div className="gz-ui-scale-options" aria-label="Interface scale">
-          {UI_SCALE_OPTIONS.map((option) => (
-            <Button
-              key={option.value}
-              type="button"
-              variant="secondary"
-              className={s.uiScale === option.value ? "gz-btn--selected" : ""}
-              aria-pressed={s.uiScale === option.value}
-              onClick={() => s.set("uiScale", option.value)}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
-        {/* Frame zoom — scales the composite + heatmap frames together to
-            fit smaller screens or a two-frame layout. Resizes the frames
-            (not a CSS transform), so tracking coordinates stay correct. */}
-        <Slider
-          label="Frame zoom"
-          value={s.frameZoom}
-          min={40}
-          max={100}
-          step={5}
-          onChange={(v) => s.set("frameZoom", v)}
-        />
         <Toggle
           label="Fit to frame"
           checked={s.compositeFitEnabled}
@@ -1326,6 +1330,14 @@ const DEFAULT_SECTION_EXPANDED: Record<string, boolean> = {
   advanced: false,
   view: false,
 };
+
+const TOP_LEVEL_SECTION_KEYS = [
+  "prompting",
+  "workflow",
+  "settings",
+  "advanced",
+  "view",
+] as const;
 
 /**
  * One row of the prompt pool. Owns its own `ResizeObserver` for height
@@ -1569,11 +1581,22 @@ function Section({
   const expanded =
     sectionsExpanded[sectionKey] ?? DEFAULT_SECTION_EXPANDED[sectionKey] ?? true;
   const toggle = () => {
-    const current = useStore.getState().sectionsExpanded;
-    useStore.getState().set("sectionsExpanded", {
-      ...current,
-      [sectionKey]: !expanded,
-    });
+    const store = useStore.getState();
+    const current = store.sectionsExpanded;
+    const opening = !expanded;
+    if (
+      opening &&
+      store.autoCollapsePanels &&
+      TOP_LEVEL_SECTION_KEYS.includes(
+        sectionKey as (typeof TOP_LEVEL_SECTION_KEYS)[number],
+      )
+    ) {
+      const next = { ...current };
+      for (const key of TOP_LEVEL_SECTION_KEYS) next[key] = key === sectionKey;
+      store.set("sectionsExpanded", next);
+      return;
+    }
+    store.set("sectionsExpanded", { ...current, [sectionKey]: opening });
   };
   return (
     <section

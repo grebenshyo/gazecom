@@ -14,7 +14,7 @@ Runs locally against your own [ComfyUI](https://github.com/comfyanonymous/ComfyU
 for image generation, with optional language and vision steps through
 [Ollama](https://ollama.com/).
 
-> First public release (v0.2.0). Evolved from a 2025 prototype.
+> Current release: v0.2.1. First published as v0.2.0; evolved from a 2025 prototype.
 
 ## What you need
 
@@ -115,7 +115,10 @@ loaded from their upstream CDNs when first selected. See
 Prompts and ComfyUI workflows each live in independent **weighted pools**, so a
 run can use one fixed choice or rotate probabilistically. Prompt slots can be
 sent directly, rewritten by a local LLM (once or self-evolving), or produced
-from the current frame by a vision model.
+from the current frame by a vision model. A pinned workflow can be muted without
+changing its weight, then unmuted to restore the same pool configuration.
+Workflow values are relative weights and are normalized automatically; unlike
+prompt-slot percentages, they do not need to total 100.
 
 ### Prompting and models
 
@@ -136,11 +139,19 @@ current frame before generation and displays the returned prompt separately.
 ### Settings and portability
 
 The `↺` control in each panel heading restores only that section to its
-fresh-install state. The global **Settings** drawer can export browser-persisted
-preferences as a versioned JSON file and import them on another installation.
-This includes prompt slots, workflow pins, model choices, tracking profiles,
-and UI preferences. Service addresses, workflow files, images, API keys,
-canvases, and WebGazer calibration data remain machine-local.
+fresh-install state. The global **Settings** drawer is organized into three
+sections:
+
+- **General** configures the ComfyUI and Ollama hosts, Ollama model retention,
+  provider-error behavior, and whether the welcome screen appears at startup.
+- **Interface** controls UI scale, frame zoom, and optional automatic collapse
+  of other panel sections when one is opened.
+- **Settings file** exports browser-persisted preferences as a versioned JSON
+  file or imports them on another installation. This includes prompt slots,
+  workflow pins, model choices, tracking profiles, and UI preferences.
+
+Service addresses, workflow files, images, API keys, canvases, and WebGazer
+calibration data remain machine-local and are not included in settings files.
 
 ### Custom workflows
 

@@ -60,6 +60,8 @@ describe("settings files", () => {
     writeJSON(StorageKeys.steps, 42);
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
     writeJSON(StorageKeys.vlmPointPromptHeight, 180);
+    writeJSON(StorageKeys.autoCollapsePanels, true);
+    writeJSON(StorageKeys.mutedWorkflows, ["edit/example.json"]);
     writeJSON(StorageKeys.roamSpeed, 9);
 
     const file = createSettingsFile();
@@ -71,6 +73,8 @@ describe("settings files", () => {
         steps: 42,
         vlmModel: "gemma4:latest",
         vlmPointPromptHeight: 180,
+        autoCollapsePanels: true,
+        mutedWorkflows: ["edit/example.json"],
       },
     });
     expect(file.settings).not.toHaveProperty("roamSpeed");
@@ -105,6 +109,16 @@ describe("settings files", () => {
       }),
     ).toThrow('Invalid value for setting "steps".');
     expect(readJSON(StorageKeys.steps, 0)).toBe(77);
+  });
+
+  it("rejects invalid muted workflow paths", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { mutedWorkflows: ["img/valid.json", 42] },
+      }),
+    ).toThrow('Invalid value for setting "mutedWorkflows".');
   });
 
   it("rejects unrelated and unsupported files", () => {

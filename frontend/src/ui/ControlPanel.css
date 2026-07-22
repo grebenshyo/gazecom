@@ -85,10 +85,7 @@ body.gz-theme-dark .gz-panel-header {
   opacity: 1;
 }
 
-/* Workflow pool row — one per pinned workflow. Label + slider + weight
-   readout + remove button on one line. Slider takes the leftover
-   horizontal space; the readout has a fixed width so the layout doesn't
-   jitter as numbers change digit count. */
+/* Workflow pool row — label, mute toggle, weight, percent, and remove. */
 .gz-pool-row {
   display: flex;
   align-items: center;
@@ -104,6 +101,52 @@ body.gz-theme-dark .gz-panel-header {
   white-space: nowrap;
   color: var(--text-color);
   opacity: 0.85;
+}
+
+.gz-pool-row__mute {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.65;
+}
+
+.gz-pool-row__mute::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  border: 1px solid var(--text-color);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.gz-pool-row__mute:hover {
+  opacity: 1;
+}
+
+.gz-pool-row__mute:focus-visible {
+  outline: 1px solid var(--gz-section-accent, var(--button-bg));
+  outline-offset: 1px;
+}
+
+.gz-pool-row__mute--active::before {
+  border-color: var(--gz-section-accent, var(--button-bg));
+  background: var(--gz-section-accent, var(--button-bg));
+}
+
+.gz-pool-row__mute--active {
+  opacity: 1;
+}
+
+.gz-pool-row--muted .gz-pool-row__label,
+.gz-pool-row--muted .gz-pool-row__weight-input {
+  opacity: 0.4;
 }
 
 /* Compact integer input for the weight. Hide the browser spinners so it
@@ -132,10 +175,8 @@ body.gz-theme-dark .gz-panel-header {
   margin: 0;
 }
 
-.gz-pool-row__pct {
-  flex: 0 0 auto;
-  color: var(--text-color);
-  opacity: 0.6;
+.gz-pool-row__weight-input:disabled {
+  cursor: not-allowed;
 }
 
 .gz-pool-row__remove {
@@ -312,23 +353,6 @@ body.gz-theme-dark .gz-prompt-slot__derived {
 
 .gz-bbox-controls .gz-btn {
   flex: 0 0 auto;
-}
-
-.gz-ui-scale-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.gz-ui-scale-options .gz-btn {
-  width: 100%;
-}
-
-.gz-ui-scale-options .gz-btn--selected {
-  background: var(--gz-section-accent, var(--button-bg));
-  border-color: var(--gz-section-accent, var(--button-bg));
-  color: var(--button-text);
-  opacity: 1;
 }
 
 /* Section identity colors — one hue per collapsible section header so the

@@ -119,7 +119,7 @@ cp .env.example .env
 # OLLAMA_KEEP_MODEL_LOADED=true if Ollama runs off the Flux GPU
 ```
 
-The Settings drawer changes the same hosts at runtime. Keep
+The Settings drawer's General section changes the same hosts at runtime. Keep
 `OLLAMA_KEEP_MODEL_LOADED` off when Ollama shares VRAM with Comfy/Flux; turn it
 on for a separate machine to avoid expensive reloads.
 
@@ -172,7 +172,7 @@ gated on `v*` tags, and attaches the zipped artifacts to a GitHub Release.
 the freeze). Tag a version to cut a release:
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.2.1 && git push origin v0.2.1
 ```
 
 ## Workflows

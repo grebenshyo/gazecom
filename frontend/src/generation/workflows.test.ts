@@ -2,16 +2,36 @@ import { describe, expect, it } from "vitest";
 
 import { seededRng } from "../trackers/_test-helpers";
 import {
+  activePool,
   addToPool,
   determineWorkflowType,
   pickFromPool,
-  poolIsValid,
-  poolSum,
   reconcilePool,
   removeFromPool,
   setPoolWeight,
   type PinnedPool,
 } from "./workflows";
+
+describe("activePool", () => {
+  it("excludes muted and zero-weight workflows without changing stored weights", () => {
+    const pool: PinnedPool = {
+      "img/A.json": 50,
+      "edit/B.json": 50,
+      "img/C.json": 0,
+    };
+
+    expect(activePool(pool, ["edit/B.json"])).toEqual({ "img/A.json": 50 });
+    expect(pool).toEqual({
+      "img/A.json": 50,
+      "edit/B.json": 50,
+      "img/C.json": 0,
+    });
+  });
+
+  it("returns an empty pool when every non-zero workflow is muted", () => {
+    expect(activePool({ "img/A.json": 100 }, ["img/A.json"])).toEqual({});
+  });
+});
 
 describe("determineWorkflowType", () => {
   it("classifies inpainting", () => {
@@ -66,6 +86,12 @@ describe("pickFromPool", () => {
     expect(counts["default/C.json"] / N).toBeLessThan(0.15);
   });
 
+  it("normalizes an arbitrary positive total", () => {
+    const pool: PinnedPool = { "img/A.json": 30, "img/B.json": 20 };
+    expect(pickFromPool(pool, () => 0.59)).toBe("img/A.json");
+    expect(pickFromPool(pool, () => 0.61)).toBe("img/B.json");
+  });
+
   it("is deterministic with a seeded rng", () => {
     const pool: PinnedPool = {
       "default/A.json": 50,
@@ -77,11 +103,9 @@ describe("pickFromPool", () => {
     expect(a).toBe(b);
   });
 
-  it("falls back to uniform when all weights are 0 (degenerate)", () => {
+  it("returns null when all weights are 0", () => {
     const pool: PinnedPool = { "default/A.json": 0, "default/B.json": 0 };
-    // Shouldn't infinite-loop or return null; just pick something.
-    const pick = pickFromPool(pool, seededRng(7));
-    expect(pick).toMatch(/^default\/[AB]\.json$/);
+    expect(pickFromPool(pool, seededRng(7))).toBeNull();
   });
 });
 
@@ -92,7 +116,8 @@ describe("addToPool", () => {
   });
 
   it("adds a new pin at weight 0 when the pool is non-empty", () => {
-    // Existing pin's weight is left untouched; user manually rebalances.
+    // Existing relative selection is left untouched until the user assigns
+    // the new workflow a positive weight.
     const next = addToPool({ "default/A.json": 100 }, "default/B.json");
     expect(next).toEqual({ "default/A.json": 100, "default/B.json": 0 });
   });
@@ -117,13 +142,13 @@ describe("addToPool", () => {
 });
 
 describe("reconcilePool", () => {
-  it("removes stale pins and proportionally restores 100%", () => {
+  it("removes stale pins without rewriting remaining relative weights", () => {
     expect(
       reconcilePool(
         { "img/A.json": 60, "edit/B.json": 30, "img/missing.json": 10 },
         new Set(["img/A.json", "edit/B.json"]),
       ),
-    ).toEqual({ "img/A.json": 67, "edit/B.json": 33 });
+    ).toEqual({ "img/A.json": 60, "edit/B.json": 30 });
   });
 
   it("returns an empty pool when no pins remain", () => {
@@ -145,8 +170,6 @@ describe("removeFromPool", () => {
     };
     const next = removeFromPool(pool, "default/A.json");
     expect(next).toEqual({ "default/B.json": 30, "default/C.json": 50 });
-    // Sum is now 80 — the user has to fix that before generating.
-    expect(poolSum(next)).toBe(80);
   });
 
   it("preserves Object.keys order", () => {
@@ -172,9 +195,6 @@ describe("setPoolWeight", () => {
     const pool: PinnedPool = { "default/A.json": 100, "default/B.json": 0 };
     const next = setPoolWeight(pool, "default/B.json", 40);
     expect(next).toEqual({ "default/A.json": 100, "default/B.json": 40 });
-    // Sum > 100 — invalid pool, user must lower A. That's deliberately
-    // the user's job; the function doesn't auto-correct.
-    expect(poolSum(next)).toBe(140);
   });
 
   it("clamps the new weight to [0, 100]", () => {
@@ -204,34 +224,5 @@ describe("setPoolWeight", () => {
     const next = setPoolWeight(pool, "default/X.json", 50);
     expect(next).toEqual(pool);
     expect(next).not.toBe(pool);
-  });
-});
-
-describe("poolSum + poolIsValid", () => {
-  it("poolSum returns 0 on empty pool", () => {
-    expect(poolSum({})).toBe(0);
-  });
-
-  it("poolSum totals all weights", () => {
-    expect(poolSum({ a: 25, b: 25, c: 50 })).toBe(100);
-    expect(poolSum({ a: 20, b: 30, c: 50 })).toBe(100);
-    expect(poolSum({ a: 60, b: 30 })).toBe(90);
-    expect(poolSum({ a: 50, b: 70 })).toBe(120);
-  });
-
-  it("poolIsValid: empty pool is invalid", () => {
-    expect(poolIsValid({})).toBe(false);
-  });
-
-  it("poolIsValid: sum === 100 is valid", () => {
-    expect(poolIsValid({ a: 100 })).toBe(true);
-    expect(poolIsValid({ a: 50, b: 50 })).toBe(true);
-    expect(poolIsValid({ a: 70, b: 30 })).toBe(true);
-  });
-
-  it("poolIsValid: sum !== 100 is invalid", () => {
-    expect(poolIsValid({ a: 50 })).toBe(false);
-    expect(poolIsValid({ a: 60, b: 30 })).toBe(false);
-    expect(poolIsValid({ a: 50, b: 70 })).toBe(false);
   });
 });

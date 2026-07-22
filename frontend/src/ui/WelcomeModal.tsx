@@ -17,15 +17,18 @@ export function WelcomeModal() {
           iterative image generation and composition across an infinite canvas.
         </p>
         <p>
-          Set the ComfyUI and optional Ollama addresses in the service settings
-          drawer opened by the <strong>⚙</strong> button. Then choose a tracking
-          mode under <strong>Settings</strong> and pin a generation workflow under{" "}
+          Set the ComfyUI and optional Ollama addresses under{" "}
+          <strong>General</strong> in the settings drawer opened by the{" "}
+          <strong>⚙</strong> button. Then choose a tracking mode under{" "}
+          <strong>Settings</strong> and pin a generation workflow under{" "}
           <strong>Workflow</strong> in the panel. Hit{" "}
           <strong>Start tracking</strong>, then <strong>Generate</strong>{" "}
           to use the resulting heatmap to guide generation.
         </p>
         <p>
-          Frame and display controls are available under <strong>View</strong>.
+          Interface scale, frame zoom, and panel auto-collapse options are under{" "}
+          <strong>Interface</strong> in the settings drawer; workspace view options
+          are under <strong>View</strong> in the panel.
         </p>
         <div className="gz-modal__row">
           <Toggle

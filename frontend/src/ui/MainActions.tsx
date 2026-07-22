@@ -19,7 +19,7 @@ import { clearAndReseed } from "../canvas/clearAndReseed";
 import { downloadComposite } from "../canvas/downloadComposite";
 import { pullHandle } from "../canvas/pullHandle";
 import { bumpEpoch } from "../generation/epoch";
-import { poolIsValid } from "../generation/workflows";
+import { activePool } from "../generation/workflows";
 import { promptPoolIsValid } from "../prompts";
 import { useStore } from "../store";
 import "./MainActions.css";
@@ -42,12 +42,14 @@ export function MainActions({
   const iterativeRunning = useStore((s) => s.iterativeRunning);
   const cropBoxVisible = useStore((s) => s.cropBoxVisible);
   const pinnedWorkflows = useStore((s) => s.pinnedWorkflows);
+  const mutedWorkflows = useStore((s) => s.mutedWorkflows);
   const pinnedPrompts = useStore((s) => s.pinnedPrompts);
   const set = useStore((s) => s.set);
 
   const isGenerating = generationInProgress || iterativeRunning;
   const poolEmpty = Object.keys(pinnedWorkflows).length === 0;
-  const workflowPoolValid = poolIsValid(pinnedWorkflows);
+  const hasActiveWorkflow =
+    Object.keys(activePool(pinnedWorkflows, mutedWorkflows)).length > 0;
   // Prompt pool: at least one base slot always exists (the data
   // model guarantees it), so we just need the sum-100 invariant. The
   // panel surfaces the matching warning when this fails.
@@ -133,21 +135,17 @@ export function MainActions({
       <Button
         variant="primary"
         onClick={handleGenerateClick}
-        // Three blockers:
-        //   - workflow pool empty (no workflow to pick)
-        //   - workflow pool sum != 100
-        //   - prompt pool non-empty but sum != 100
-        // (Empty prompt pool is allowed — textarea + backend fallback
-        // cover that case.)
+        // Two blockers: no positive, unmuted workflow to pick, or an invalid
+        // prompt-percentage pool. Workflow totals are normalized implicitly.
         // Stop remains clickable while a generation is running.
-        disabled={!isGenerating && (!workflowPoolValid || !promptPoolValid)}
+        disabled={!isGenerating && (!hasActiveWorkflow || !promptPoolValid)}
         title={
           isGenerating
             ? undefined
             : poolEmpty
               ? "Pin a workflow first"
-              : !workflowPoolValid
-                ? "Workflow weights must sum to 100%"
+              : !hasActiveWorkflow
+                ? "Unmute a workflow or give one a weight above 0"
                 : !promptPoolValid
                   ? "Prompt weights must sum to 100%"
                   : undefined

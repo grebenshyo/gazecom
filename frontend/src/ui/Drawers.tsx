@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useStore } from "../store";
+import { useStore, type UIScale } from "../store";
 import {
   applySettingsFile,
   clearAllGenGazeKeys,
@@ -15,8 +15,14 @@ import {
   setOllamaHost as apiSetOllamaHost,
   setOllamaKeepModelLoaded as apiSetOllamaKeepModelLoaded,
 } from "../generation/api";
-import { Button, Toggle } from "./components";
+import { Button, Slider, Toggle } from "./components";
 import "./Drawers.css";
+
+const UI_SCALE_OPTIONS: ReadonlyArray<{ value: UIScale; label: string }> = [
+  { value: 72, label: "Compact" },
+  { value: 80, label: "Medium" },
+  { value: 100, label: "Large" },
+];
 
 export function Drawers() {
   const [open, setOpen] = useState<"help" | "settings" | null>(null);
@@ -102,7 +108,7 @@ function HelpPanel({
               ["guide-generation", "Generation"],
               ["guide-canvas", "Canvas"],
               ["guide-advanced", "Advanced"],
-              ["guide-resources", "Resources"],
+              ["guide-resources", "Global settings"],
             ].map(([id, label]) => (
               <button key={id} type="button" onClick={() => jumpTo(id)}>
                 {label}
@@ -121,7 +127,7 @@ function HelpPanel({
             </li>
             <li>
               Under Workflow, pin at least one workflow. Multiple selections
-              form a weighted pool and must total 100%.
+              form a relative weighted pool; values do not need to total 100.
             </li>
             <li>
               Choose an image and tracking mode under Settings, then start
@@ -240,8 +246,10 @@ function HelpPanel({
           <p>
             When generation selects a different workflow, Steps adopts that
             workflow's declared default; you can override it in the compact
-            input. Removing or renaming a workflow removes its stale pin and
-            rebalances the remaining pool automatically.
+            input. The M button temporarily mutes a workflow while preserving
+            its weight. Active values are normalized automatically, so only
+            their relative proportions matter. Removing or renaming a workflow
+            removes its stale pin without rewriting the remaining weights.
           </p>
           <aside className="gz-guide-note">
             <strong>Custom workflows.</strong> Downloaded builds keep the
@@ -325,15 +333,21 @@ function HelpPanel({
             model and coordinate prompt, and WebGazer calibration-cache controls.
           </p>
           <p>
-            View controls interface scale, frame zoom and visibility, fit target,
-            pull-box display and frame width, and Reset pos, which returns the
-            box to the first patch position. Hiding the heatmap frame does not
-            stop tracking.
+            View controls frame visibility, fit target, pull-box display and
+            frame width, and Reset pos, which returns the box to the first patch
+            position. Hiding the heatmap frame does not stop tracking.
           </p>
         </section>
 
         <section id="guide-resources" className="gz-guide-section">
-          <h4>Model resources</h4>
+          <h4>Global settings</h4>
+          <p>
+            The Settings drawer is organized as General, Interface, and Settings
+            file. General contains the ComfyUI and Ollama hosts, Ollama model
+            retention, provider-error behavior, and the welcome-screen option.
+            Interface controls UI scale, frame zoom, and optional auto-collapse
+            behavior for panel sections.
+          </p>
           <p>
             Keep Ollama loaded to avoid model reloads when it runs on a separate
             machine. Turn it off when Ollama and image generation share memory so
@@ -342,10 +356,10 @@ function HelpPanel({
             after a provider failure.
           </p>
           <p>
-            Export settings downloads browser-persisted preferences as JSON;
-            Import settings restores them on this or another installation.
-            Service addresses, workflow files, images, API keys, canvases, and
-            WebGazer calibration data stay machine-local.
+            Settings file exports browser-persisted preferences as JSON and
+            imports them on this or another installation. Service addresses,
+            workflow files, images, API keys, canvases, and WebGazer calibration
+            data stay machine-local.
           </p>
         </section>
       </div>
@@ -362,6 +376,9 @@ function SettingsPanel({
 }) {
   const showWelcome = useStore((s) => s.showWelcome);
   const skipProviderErrors = useStore((s) => s.skipProviderErrors);
+  const uiScale = useStore((s) => s.uiScale);
+  const frameZoom = useStore((s) => s.frameZoom);
+  const autoCollapsePanels = useStore((s) => s.autoCollapsePanels);
   const set = useStore((s) => s.set);
 
   // Runtime service hosts — server-side config persisted per-user by the
@@ -487,102 +504,135 @@ function SettingsPanel({
       </button>
       <h3>Settings</h3>
       <div className="gz-drawer-content">
-        <label className="gz-drawer-field">
-          <span>ComfyUI host</span>
-          <div className="gz-drawer-input">
-            <span aria-hidden="true">http://</span>
-            <input
-              aria-label="ComfyUI host"
-              type="text"
-              value={comfyHostInput}
-              placeholder={comfyHost || "127.0.0.1:8188"}
-              disabled={!serviceConfigLoaded}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              onChange={(e) => {
-                setComfyHostInput(e.target.value);
-                setComfyHostStatus("idle");
-                setComfyHostError("");
-              }}
-              onBlur={() => void saveComfyHost()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
+        <section className="gz-settings-group">
+          <strong>General</strong>
+          <label className="gz-drawer-field">
+            <span>ComfyUI host</span>
+            <div className="gz-drawer-input">
+              <span aria-hidden="true">http://</span>
+              <input
+                aria-label="ComfyUI host"
+                type="text"
+                value={comfyHostInput}
+                placeholder={comfyHost || "127.0.0.1:8188"}
+                disabled={!serviceConfigLoaded}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                onChange={(e) => {
+                  setComfyHostInput(e.target.value);
+                  setComfyHostStatus("idle");
+                  setComfyHostError("");
+                }}
+                onBlur={() => void saveComfyHost()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+            </div>
+            {comfyHostStatus !== "idle" && (
+              <small>
+                {comfyHostStatus === "saving"
+                  ? "Saving…"
+                  : comfyHostStatus === "saved"
+                    ? "Saved ✓"
+                    : `Save failed: ${comfyHostError || "unknown error"}`}
+              </small>
+            )}
+          </label>
+          <label className="gz-drawer-field">
+            <span>Ollama host</span>
+            <div className="gz-drawer-input">
+              <span aria-hidden="true">http://</span>
+              <input
+                aria-label="Ollama host"
+                type="text"
+                value={ollamaHostInput}
+                placeholder={ollamaHost || "127.0.0.1:11434"}
+                disabled={!serviceConfigLoaded}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                onChange={(e) => {
+                  setOllamaHostInput(e.target.value);
+                  setOllamaHostStatus("idle");
+                  setOllamaHostError("");
+                }}
+                onBlur={() => void saveOllamaHost()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+            </div>
+            {ollamaHostStatus !== "idle" && (
+              <small>
+                {ollamaHostStatus === "saving"
+                  ? "Saving…"
+                  : ollamaHostStatus === "saved"
+                    ? "Saved ✓"
+                    : `Save failed: ${ollamaHostError || "unknown error"}`}
+              </small>
+            )}
+          </label>
+          <div className="gz-drawer-toggle-field">
+            <Toggle
+              label="Keep Ollama model loaded"
+              checked={ollamaKeepModelLoaded}
+              onChange={(v) => void saveOllamaKeepModelLoaded(v)}
             />
-          </div>
-          {comfyHostStatus !== "idle" && (
             <small>
-              {comfyHostStatus === "saving"
+              {ollamaKeepStatus === "saving"
                 ? "Saving…"
-                : comfyHostStatus === "saved"
-                  ? "Saved ✓"
-                  : `Save failed: ${comfyHostError || "unknown error"}`}
+                : ollamaKeepStatus === "saved"
+                  ? ollamaKeepModelLoaded
+                    ? "Saved ✓ Ollama keeps the LLM warm between enhancements."
+                    : "Saved ✓ Ollama unloads the LLM after each enhancement."
+                  : ollamaKeepStatus === "error"
+                    ? `Save failed: ${ollamaKeepError || "unknown error"}`
+                    : "On is best for a separate machine; off frees VRAM when Ollama shares the Flux GPU."}
             </small>
-          )}
-        </label>
-        <label className="gz-drawer-field">
-          <span>Ollama host</span>
-          <div className="gz-drawer-input">
-            <span aria-hidden="true">http://</span>
-            <input
-              aria-label="Ollama host"
-              type="text"
-              value={ollamaHostInput}
-              placeholder={ollamaHost || "127.0.0.1:11434"}
-              disabled={!serviceConfigLoaded}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              onChange={(e) => {
-                setOllamaHostInput(e.target.value);
-                setOllamaHostStatus("idle");
-                setOllamaHostError("");
-              }}
-              onBlur={() => void saveOllamaHost()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-            />
           </div>
-          {ollamaHostStatus !== "idle" && (
-            <small>
-              {ollamaHostStatus === "saving"
-                ? "Saving…"
-                : ollamaHostStatus === "saved"
-                  ? "Saved ✓"
-                  : `Save failed: ${ollamaHostError || "unknown error"}`}
-            </small>
-          )}
-        </label>
-        <div className="gz-drawer-toggle-field">
           <Toggle
-            label="Keep Ollama model loaded"
-            checked={ollamaKeepModelLoaded}
-            onChange={(v) => void saveOllamaKeepModelLoaded(v)}
+            label="Skip provider errors"
+            checked={skipProviderErrors}
+            onChange={(v) => set("skipProviderErrors", v)}
           />
-          <small>
-            {ollamaKeepStatus === "saving"
-              ? "Saving…"
-              : ollamaKeepStatus === "saved"
-                ? ollamaKeepModelLoaded
-                  ? "Saved ✓ Ollama keeps the LLM warm between enhancements."
-                  : "Saved ✓ Ollama unloads the LLM after each enhancement."
-                : ollamaKeepStatus === "error"
-                  ? `Save failed: ${ollamaKeepError || "unknown error"}`
-                  : "On is best for a separate machine; off frees VRAM when Ollama shares the Flux GPU."}
-          </small>
-        </div>
-        <Toggle
-          label="Skip provider errors"
-          checked={skipProviderErrors}
-          onChange={(v) => set("skipProviderErrors", v)}
-        />
-        <Toggle
-          label="Show welcome screen on startup"
-          checked={showWelcome}
-          onChange={(v) => set("showWelcome", v)}
-        />
+          <Toggle
+            label="Show welcome screen on startup"
+            checked={showWelcome}
+            onChange={(v) => set("showWelcome", v)}
+          />
+        </section>
+        <section className="gz-settings-group">
+          <strong>Interface</strong>
+          <div className="gz-ui-scale-options" aria-label="Interface scale">
+            {UI_SCALE_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                variant="secondary"
+                className={uiScale === option.value ? "gz-btn--selected" : ""}
+                aria-pressed={uiScale === option.value}
+                onClick={() => set("uiScale", option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          <Slider
+            label="Frame zoom"
+            value={frameZoom}
+            min={40}
+            max={100}
+            step={5}
+            onChange={(v) => set("frameZoom", v)}
+          />
+          <Toggle
+            label="Auto-collapse panels"
+            checked={autoCollapsePanels}
+            onChange={(v) => set("autoCollapsePanels", v)}
+          />
+        </section>
         <section className="gz-settings-transfer">
           <strong>Settings file</strong>
           <input
@@ -620,27 +670,29 @@ function SettingsPanel({
           </small>
           {settingsFileError && <small>{settingsFileError}</small>}
         </section>
-        <Button
-          variant="secondary"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={async () => {
-            if (
-              !window.confirm(
-                "Reset all gazeCOM settings? This clears your saved preferences.",
+        <div className="gz-settings-reset">
+          <Button
+            variant="secondary"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  "Reset all gazeCOM settings? This clears your saved preferences.",
+                )
               )
-            )
-              return;
-            try {
-              await resetConfig();
-              clearAllGenGazeKeys();
-              window.location.reload();
-            } catch (err) {
-              window.alert(`Reset failed: ${(err as Error).message}`);
-            }
-          }}
-        >
-          Reset all settings
-        </Button>
+                return;
+              try {
+                await resetConfig();
+                clearAllGenGazeKeys();
+                window.location.reload();
+              } catch (err) {
+                window.alert(`Reset failed: ${(err as Error).message}`);
+              }
+            }}
+          >
+            Reset all settings
+          </Button>
+        </div>
       </div>
     </aside>
   );

@@ -1,6 +1,6 @@
 [project]
 name = "gazecom-backend"
-version = "0.2.0"
+version = "0.2.1"
 description = "gazeCOM backend - FastAPI proxy to ComfyUI for saliency-driven generative art"
 readme = "README.md"
 requires-python = ">=3.11"

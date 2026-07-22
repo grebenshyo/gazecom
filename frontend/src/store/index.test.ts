@@ -62,11 +62,16 @@ describe("useStore — actions", () => {
     });
   });
 
-  it("resetSection() restores Settings profiles and View defaults", async () => {
+  it("resetSection() leaves global interface settings outside View reset", async () => {
     const { useStore } = await import("./index");
     useStore.getState().set("trackingMode", "roam2");
     useStore.getState().set("pointSize", 150);
-    useStore.getState().patch({ uiScale: 100, frameZoom: 40 });
+    useStore.getState().patch({
+      uiScale: 100,
+      frameZoom: 40,
+      autoCollapsePanels: true,
+      cropBoxBorderWidth: 20,
+    });
 
     useStore.getState().resetSection("settings");
     useStore.getState().resetSection("view");
@@ -77,8 +82,10 @@ describe("useStore — actions", () => {
       trailLength: 300,
       pointSize: 50,
       pointJitter: 0,
-      uiScale: 80,
-      frameZoom: 85,
+      uiScale: 100,
+      frameZoom: 40,
+      autoCollapsePanels: true,
+      cropBoxBorderWidth: 4,
     });
   });
 
@@ -86,6 +93,7 @@ describe("useStore — actions", () => {
     const { DEFAULT_VLM_POINT_PROMPT, useStore } = await import("./index");
     useStore.getState().patch({
       pinnedWorkflows: { "edit/custom.json": 100 },
+      mutedWorkflows: ["edit/custom.json"],
       steps: 42,
       compositeMatteEnabled: true,
       boundsEnabled: true,
@@ -100,6 +108,7 @@ describe("useStore — actions", () => {
 
     expect(useStore.getState()).toMatchObject({
       pinnedWorkflows: {},
+      mutedWorkflows: [],
       steps: 10,
       compositeMatteEnabled: false,
       boundsEnabled: false,

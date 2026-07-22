@@ -144,13 +144,14 @@ export interface AppState {
 
   // ── Generation ────────────────────────────────────────────────────
   /**
-   * The workflow rotation pool: workflow path → weight (integer 0–100,
-   * all values sum to exactly 100 when non-empty). Pure pin-based model;
-   * one pin = single workflow per generation, many pins = weighted
-   * rotation. Zero pins disables the Generate button. Replaces the
-   * legacy single-select + random + auto-mode triumvirate.
+   * The workflow rotation pool: workflow path → relative weight (integer
+   * 0–100). Any positive total is normalized at selection time. One pin =
+   * single workflow per generation, many pins = weighted rotation. Zero pins
+   * disables the Generate button.
    */
   pinnedWorkflows: Record<string, number>;
+  /** Workflow paths temporarily excluded without changing their weights. */
+  mutedWorkflows: string[];
   availableWorkflows: WorkflowDescriptor[];
   /** Currently selected reference image (filename only, e.g. "girl.jpg"). */
   selectedImage: string | null;
@@ -311,6 +312,8 @@ export interface AppState {
    * and are normalized — stay correct. 100 = full size.
    */
   frameZoom: number;
+  /** When opening a top-level control section, close the other sections. */
+  autoCollapsePanels: boolean;
   calibCache: boolean;
   /**
    * Per-section expanded/collapsed state for the control-panel's
@@ -335,7 +338,11 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.llmModel,
     StorageKeys.llmEnhancePrompt,
   ],
-  workflow: [StorageKeys.pinnedWorkflows, StorageKeys.steps],
+  workflow: [
+    StorageKeys.pinnedWorkflows,
+    StorageKeys.mutedWorkflows,
+    StorageKeys.steps,
+  ],
   settings: [
     StorageKeys.trackingMode,
     StorageKeys.trackingProfiles,
@@ -364,8 +371,6 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.calibCache,
   ],
   view: [
-    StorageKeys.uiScale,
-    StorageKeys.frameZoom,
     StorageKeys.compositeFitEnabled,
     StorageKeys.compositeFitTarget,
     StorageKeys.cropBoxVisible,
@@ -385,6 +390,16 @@ function loadInitial(): AppState {
     StorageKeys.pinnedWorkflows,
     {},
   );
+  const storedMutedWorkflows = readJSON<unknown>(StorageKeys.mutedWorkflows, []);
+  const mutedWorkflows = Array.isArray(storedMutedWorkflows)
+    ? [
+        ...new Set(
+          storedMutedWorkflows.filter(
+            (path): path is string => typeof path === "string",
+          ),
+        ),
+      ]
+    : [];
   return {
     trackingMode,
     trackingProfiles,
@@ -432,6 +447,7 @@ function loadInitial(): AppState {
     patchesSinceClear: 0,
 
     pinnedWorkflows,
+    mutedWorkflows,
     availableWorkflows: [],
     selectedImage: readJSON<string | null>(StorageKeys.selectedImage, null),
     availableImages: [],
@@ -495,6 +511,10 @@ function loadInitial(): AppState {
     canvasVisible: readJSON<boolean>(StorageKeys.canvasVisible, true),
     heatmapVisible: readJSON<boolean>(StorageKeys.heatmapVisible, true),
     frameZoom: readJSON<number>(StorageKeys.frameZoom, 85),
+    autoCollapsePanels: readJSON<boolean>(
+      StorageKeys.autoCollapsePanels,
+      false,
+    ),
     calibCache: readJSON<boolean>(StorageKeys.calibCache, true),
     sectionsExpanded: readJSON<Record<string, boolean>>(
       StorageKeys.sectionsExpanded,
@@ -555,6 +575,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["heatmapMatteEnabled", StorageKeys.heatmapMatteEnabled],
   ["matteColor", StorageKeys.matteColor],
   ["pinnedWorkflows", StorageKeys.pinnedWorkflows],
+  ["mutedWorkflows", StorageKeys.mutedWorkflows],
   ["selectedImage", StorageKeys.selectedImage],
   ["steps", StorageKeys.steps],
   ["promptList", StorageKeys.promptList],
@@ -574,6 +595,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["canvasVisible", StorageKeys.canvasVisible],
   ["heatmapVisible", StorageKeys.heatmapVisible],
   ["frameZoom", StorageKeys.frameZoom],
+  ["autoCollapsePanels", StorageKeys.autoCollapsePanels],
   ["calibCache", StorageKeys.calibCache],
   ["sectionsExpanded", StorageKeys.sectionsExpanded],
 ];
@@ -636,6 +658,7 @@ export const useStore = create<AppState & AppActions>()(
         case "workflow":
           set({
             pinnedWorkflows: defaults.pinnedWorkflows,
+            mutedWorkflows: defaults.mutedWorkflows,
             steps: defaults.steps,
             lastPickedWorkflow: null,
           });
@@ -680,8 +703,6 @@ export const useStore = create<AppState & AppActions>()(
           break;
         case "view":
           set({
-            uiScale: defaults.uiScale,
-            frameZoom: defaults.frameZoom,
             compositeFitEnabled: defaults.compositeFitEnabled,
             compositeFitTarget: defaults.compositeFitTarget,
             cropBoxVisible: defaults.cropBoxVisible,
