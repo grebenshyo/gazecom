@@ -73,6 +73,8 @@ browser opens to gazeCOM. Then:
 
 - Open the **Settings** drawer and set your **ComfyUI** host (and optional
   **Ollama** host). That's the only setup.
+- Open the **?** drawer for the built-in Guide covering setup, tracking modes,
+  prompting, workflows, generation, canvas controls, and settings.
 - **To quit**, close the terminal window or press **Ctrl-C** in it. That stops
   the local server; the browser tab is then just a stale page you can close.
 - Relaunching while it's already running reopens the same window instead of

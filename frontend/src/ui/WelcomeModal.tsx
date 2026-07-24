@@ -30,6 +30,10 @@ export function WelcomeModal() {
           <strong>Interface</strong> in the settings drawer; workspace view options
           are under <strong>View</strong> in the panel.
         </p>
+        <p>
+          Open the built-in Guide with the <strong>?</strong> button for setup
+          details and an overview of every mode and control.
+        </p>
         <div className="gz-modal__row">
           <Toggle
             label="Show on startup"
