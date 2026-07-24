@@ -48,6 +48,7 @@ export const StorageKeys = {
   pinnedPrompts: "gengaze.pinnedPrompts",
   llmModel: "gengaze.llmModel",
   vlmModel: "gengaze.vlmModel",
+  vlmScope: "gengaze.vlmScope",
   llmEnhancePrompt: "gengaze.llmEnhancePrompt",
   vlmPointPrompt: "gengaze.vlmPointPrompt",
   vlmPointPromptHeight: "gengaze.vlmPointPromptHeight",
@@ -251,6 +252,8 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "llmEnhancePrompt":
     case "vlmPointPrompt":
       return typeof value === "string";
+    case "vlmScope":
+      return isOneOf(value, ["frame", "canvas"]);
     case "pinnedPrompts":
       return isPromptSlots(value);
     case "theme":

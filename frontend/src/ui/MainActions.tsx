@@ -133,7 +133,7 @@ export function MainActions({
         variant="primary"
         onClick={handleGenerateClick}
         // Both pools use relative weights normalized during selection. The
-        // only blocker is having no positive, unmuted entry to pick.
+        // only blocker is having no nonblank, positive, unmuted entry to pick.
         // Stop remains clickable while a generation is running.
         disabled={!isGenerating && (!hasActiveWorkflow || !promptPoolValid)}
         title={
@@ -144,7 +144,7 @@ export function MainActions({
               : !hasActiveWorkflow
                 ? "Unmute a workflow or give one a weight above 0"
                 : !promptPoolValid
-                  ? "Unmute a prompt slot with a weight above 0"
+                  ? "Enter text in an unmuted prompt slot with a weight above 0"
                   : undefined
         }
       >

@@ -12,9 +12,11 @@
 import { useEffect, useRef } from "react";
 
 import {
-  deriveCompositeBounds,
+  deriveCOMBounds,
+  deriveCompositeMaxSize,
   deriveRoamConstraint,
 } from "../../canvas/CompositeBounds";
+import { compositeStore } from "../../canvas/CompositeStore";
 import type { HeatmapInstance } from "../../canvas/HeatmapInstance";
 import { useStore } from "../../store";
 import {
@@ -83,27 +85,23 @@ export function useTracker({
       const s = useStore.getState();
       if (!s.comMode || !s.compositeMode || !s.boundsEnabled) return null;
 
-      const firstPatch = s.firstPatchPosition ?? s.baseImgPosition;
-      const nextSize = {
-        width: s.baseImgPosition.width,
-        height: s.baseImgPosition.height,
-      };
-      const bounds = deriveCompositeBounds(
-        {
-          enabled: s.boundsEnabled,
-          width: s.boundsWidth,
-          height: s.boundsHeight,
-        },
-        firstPatch,
-        nextSize,
-      );
-      if (!bounds) return null;
+      const canvas = compositeStore.getCanvas();
+      if (!canvas) return null;
+      const maxSize = deriveCompositeMaxSize({
+        enabled: s.boundsEnabled,
+        width: s.boundsWidth,
+        height: s.boundsHeight,
+      });
+      const comBounds = deriveCOMBounds(maxSize, {
+        width: canvas.width,
+        height: canvas.height,
+      });
+      if (!comBounds) return null;
 
       return (
         deriveRoamConstraint({
-          bounds,
+          bounds: comBounds,
           basePosition: s.baseImgPosition,
-          nextSize,
           containerSize: getContainerSize(),
         }) ?? null
       );

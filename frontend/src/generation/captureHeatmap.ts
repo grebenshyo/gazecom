@@ -209,6 +209,43 @@ export async function captureVisionFrameFromCanvas(args: {
 }
 
 /**
+ * Build an opaque, aspect-preserving overview of the full composite for
+ * canvas-scoped VLM tracking. Downscaling keeps Ollama input bounded while
+ * normalized coordinates still map directly back to the source canvas.
+ */
+export async function captureVisionCanvas(args: {
+  source: HTMLCanvasElement;
+  maxEdge?: number;
+}): Promise<Blob> {
+  const { source, maxEdge = TARGET } = args;
+  if (source.width <= 0 || source.height <= 0) {
+    throw new Error("captureVisionCanvas: source has zero dimensions");
+  }
+
+  const scale = Math.min(1, maxEdge / Math.max(source.width, source.height));
+  const width = Math.max(1, Math.round(source.width * scale));
+  const height = Math.max(1, Math.round(source.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("captureVisionCanvas: no 2D context");
+
+  ctx.fillStyle = effectiveFrameBgColor();
+  ctx.fillRect(0, 0, width, height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, source.width, source.height, 0, 0, width, height);
+
+  try {
+    return await canvasToBlob(canvas);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+/**
  * Flatten an RGBA blob onto the effective frame background and return a
  * fully-opaque PNG.
  *

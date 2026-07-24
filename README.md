@@ -93,10 +93,11 @@ browser opens to gazeCOM. Then:
 | MSI | No | Yes | Computes a computer-vision saliency map from the camera |
 | Roam | No | No | Produces a momentum-based algorithmic walk |
 | Adaptive Roam | No | No | Alternates between exploratory, focused, and scanning patterns |
-| VLM | No | No | Uses a vision model to identify the most salient coordinate |
+| VLM | No | No | Uses a vision model to select a coordinate within the current frame or full canvas |
 
-Every source feeds the same saliency heatmap → COM → generation → composition
-pipeline, so modes can be switched without changing the selected workflow.
+Every source uses the same generation and composition pipeline, so modes can be
+switched without changing the selected workflow. Most sources feed the saliency
+heatmap and COM; canvas-scoped VLM tracking selects the next Pull frame directly.
 
 Camera processing stays in the browser; gazeCOM does not upload webcam video.
 Camera-based modes require permission, and some tracker scripts/models are
@@ -141,6 +142,10 @@ under **Advanced**. The sparkle button runs the selected tool once; automatic
 prompting cycles between off (`○`), send without replacing the slot (`↗`), and
 self-evolving replacement (`↻`). The per-slot vision button describes the
 current frame before generation and displays the returned prompt separately.
+VLM tracking can evaluate either the latest generated frame or the complete
+composite. In Canvas scope, the returned coordinate centers the Pull box and
+becomes the next 1024 × 1024 working frame. Select the scope below Mode when VLM
+tracking is active; the coordinate prompt appears there with it.
 
 ### Settings and portability
 

@@ -50,6 +50,18 @@ def test_health(client: TestClient) -> None:
     assert "version" in body
 
 
+# ── Generate ────────────────────────────────────────────────────────────
+
+
+def test_generate_rejects_empty_prompt(client: TestClient) -> None:
+    resp = client.post(
+        "/api/generate",
+        data={"prompt": "   ", "workflow": "img/example.json"},
+    )
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "Prompt is required."}
+
+
 # ── Workflows ───────────────────────────────────────────────────────────
 
 

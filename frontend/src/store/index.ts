@@ -44,6 +44,7 @@ export type TrackingMode =
 
 export type CompositeFitTarget = "patch" | "composite";
 export type UIScale = 72 | 80 | 100;
+export type VLMScope = "frame" | "canvas";
 
 export type LLMModel = string;
 export type ResettableSection =
@@ -61,7 +62,7 @@ export const DEFAULT_LLM_ENHANCE_PROMPT =
 
 // VLM-mode point instruction. Mirrors the backend's POINT_SYSTEM_PROMPT
 // (routes/llm.py) — sent verbatim on every /api/llm/point request so the two
-// never drift. Editable in Advanced settings ("VLM prompt").
+// never drift. Editable in VLM mode settings ("VLM prompt").
 export const DEFAULT_VLM_POINT_PROMPT =
   "Look at this image and identify the single most visually salient point — " +
   "the one location a viewer's eye is drawn to first. Respond with ONLY that " +
@@ -86,12 +87,10 @@ export interface AppState {
   /** WebGazer-only — calibration must complete before tracking can start. */
   trackerCalibrated: boolean;
   /**
-   * VLM-mode salient point, normalized to [0, 1]. The single source of truth
-   * for the machine-driven point: the pipeline writes it after each
-   * generation, `VLMTracker` renders it every tick (so it survives heatmap
-   * clears/rebuilds like any other tracker's re-emitted points), and
-   * `buildInput` reads it for COM. `null` before the first point is set
-   * (the tracker then shows the center). Transient — not persisted.
+   * VLM-mode point normalized to [0, 1] over the active generation frame.
+   * Frame scope stores the model's returned point directly. Canvas scope
+   * moves Pull to the returned canvas point, then stores the local center
+   * because that point is now centered in the pulled frame. Transient.
    */
   vlmPoint: { x: number; y: number } | null;
   /**
@@ -183,17 +182,15 @@ export interface AppState {
    * Position of the very first patch in the *current* canvas's coordinate
    * system. Initialized on the first generation, then translated by every
    * `gz-composite-shift` event so it tracks the moving canvas origin —
-   * same way `PullTool`'s bbox follows leftward/upward growth. Used to
-   * derive the bounds box for `planComposite` when the user enables
-   * `boundsEnabled`. `null` means "no generation has happened yet" or
-   * "the composite was cleared".
+   * same way `PullTool`'s bbox follows leftward/upward growth. Used by
+   * Reset pos. `null` means "no generation has happened yet" or "the
+   * composite was cleared".
    */
   firstPatchPosition: PatchBox | null;
 
   // ── Bounds (canvas size cap) ──────────────────────────────────────
-  /** When true, clamp the canvas to a `boundsWidth × boundsHeight` window
-   *  centered on the first patch. Off by default — preserves the legacy
-   *  infinite-canvas behaviour. */
+  /** When true, cap the canvas at `boundsWidth × boundsHeight` while allowing
+   *  natural growth in any direction. Off preserves infinite-canvas behaviour. */
   boundsEnabled: boolean;
   boundsWidth: number;
   boundsHeight: number;
@@ -257,8 +254,10 @@ export interface AppState {
   pinnedPrompts: PromptSlots;
   llmModel: LLMModel;
   vlmModel: LLMModel;
+  /** Image coordinate space used by VLM tracking. */
+  vlmScope: VLMScope;
   llmEnhancePrompt: string;
-  /** VLM-mode instruction for locating the salient point (Advanced). */
+  /** VLM-mode instruction for locating the salient point (Settings). */
   vlmPointPrompt: string;
   /** User-resized VLM instruction textarea height in CSS pixels. */
   vlmPointPromptHeight: number;
@@ -354,6 +353,9 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.compositeMode,
     StorageKeys.iterativeMode,
     StorageKeys.iterativeDelay,
+    StorageKeys.vlmScope,
+    StorageKeys.vlmPointPrompt,
+    StorageKeys.vlmPointPromptHeight,
   ],
   advanced: [
     StorageKeys.compositeMatteEnabled,
@@ -366,8 +368,6 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.boundsWidth,
     StorageKeys.boundsHeight,
     StorageKeys.vlmModel,
-    StorageKeys.vlmPointPrompt,
-    StorageKeys.vlmPointPromptHeight,
     StorageKeys.calibCache,
   ],
   view: [
@@ -478,6 +478,7 @@ function loadInitial(): AppState {
     })(),
     llmModel: readJSON<LLMModel>(StorageKeys.llmModel, ""),
     vlmModel: readJSON<LLMModel>(StorageKeys.vlmModel, ""),
+    vlmScope: readJSON<VLMScope>(StorageKeys.vlmScope, "frame"),
     llmEnhancePrompt: readJSON<string>(
       StorageKeys.llmEnhancePrompt,
       DEFAULT_LLM_ENHANCE_PROMPT,
@@ -581,6 +582,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["promptList", StorageKeys.promptList],
   ["llmModel", StorageKeys.llmModel],
   ["vlmModel", StorageKeys.vlmModel],
+  ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
   ["vlmPointPromptHeight", StorageKeys.vlmPointPromptHeight],
@@ -612,6 +614,10 @@ export const useStore = create<AppState & AppActions>()(
           trackingMode: mode,
           ...state.trackingProfiles[mode],
         }));
+        return;
+      }
+      if (key === "vlmScope") {
+        set({ vlmScope: value as VLMScope, vlmPoint: null });
         return;
       }
       if (isTrackingProfileField(key)) {
@@ -679,6 +685,9 @@ export const useStore = create<AppState & AppActions>()(
             compositeMode: defaults.compositeMode,
             iterativeMode: defaults.iterativeMode,
             iterativeDelay: defaults.iterativeDelay,
+            vlmScope: defaults.vlmScope,
+            vlmPointPrompt: defaults.vlmPointPrompt,
+            vlmPointPromptHeight: defaults.vlmPointPromptHeight,
             trackingActive: false,
             iterativeRunning: false,
             vlmPoint: null,
@@ -695,8 +704,6 @@ export const useStore = create<AppState & AppActions>()(
             boundsWidth: defaults.boundsWidth,
             boundsHeight: defaults.boundsHeight,
             vlmModel: defaults.vlmModel,
-            vlmPointPrompt: defaults.vlmPointPrompt,
-            vlmPointPromptHeight: defaults.vlmPointPromptHeight,
             calibCache: defaults.calibCache,
             vlmPoint: null,
           });

@@ -63,7 +63,7 @@ describe("useStore — actions", () => {
   });
 
   it("resetSection() leaves global interface settings outside View reset", async () => {
-    const { useStore } = await import("./index");
+    const { DEFAULT_VLM_POINT_PROMPT, useStore } = await import("./index");
     useStore.getState().set("trackingMode", "roam2");
     useStore.getState().set("pointSize", 150);
     useStore.getState().patch({
@@ -71,6 +71,9 @@ describe("useStore — actions", () => {
       frameZoom: 40,
       autoCollapsePanels: true,
       cropBoxBorderWidth: 20,
+      vlmScope: "canvas",
+      vlmPointPrompt: "custom point prompt",
+      vlmPointPromptHeight: 180,
     });
 
     useStore.getState().resetSection("settings");
@@ -82,6 +85,9 @@ describe("useStore — actions", () => {
       trailLength: 300,
       pointSize: 50,
       pointJitter: 0,
+      vlmScope: "frame",
+      vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
+      vlmPointPromptHeight: 60,
       uiScale: 100,
       frameZoom: 40,
       autoCollapsePanels: true,
@@ -90,7 +96,7 @@ describe("useStore — actions", () => {
   });
 
   it("resetSection() restores Workflow and Advanced defaults", async () => {
-    const { DEFAULT_VLM_POINT_PROMPT, useStore } = await import("./index");
+    const { useStore } = await import("./index");
     useStore.getState().patch({
       pinnedWorkflows: { "edit/custom.json": 100 },
       mutedWorkflows: ["edit/custom.json"],
@@ -99,8 +105,6 @@ describe("useStore — actions", () => {
       boundsEnabled: true,
       boundsWidth: 4096,
       vlmModel: "vision-model",
-      vlmPointPrompt: "custom point prompt",
-      vlmPointPromptHeight: 180,
     });
 
     useStore.getState().resetSection("workflow");
@@ -114,8 +118,6 @@ describe("useStore — actions", () => {
       boundsEnabled: false,
       boundsWidth: 2048,
       vlmModel: "",
-      vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
-      vlmPointPromptHeight: 60,
     });
   });
 });
@@ -249,6 +251,7 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.steps, "30");
     localStorage.setItem(StorageKeys.eventHistoryLength, "900");
     localStorage.setItem(StorageKeys.vlmModel, '"moondream:latest"');
+    localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
     localStorage.setItem(StorageKeys.llmEnhancePrompt, '"custom {prompt}"');
     localStorage.setItem(StorageKeys.compositeMatteEnabled, "true");
     localStorage.setItem(StorageKeys.heatmapMatteEnabled, "true");
@@ -260,6 +263,7 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().steps).toBe(30);
     expect(useStore.getState().eventHistoryLength).toBe(900);
     expect(useStore.getState().vlmModel).toBe("moondream:latest");
+    expect(useStore.getState().vlmScope).toBe("canvas");
     expect(useStore.getState().llmEnhancePrompt).toBe("custom {prompt}");
     expect(useStore.getState().compositeMatteEnabled).toBe(true);
     expect(useStore.getState().heatmapMatteEnabled).toBe(true);

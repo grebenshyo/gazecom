@@ -18,11 +18,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PanZoom } from "panzoom";
 import { compositeStore } from "./CompositeStore";
-import { pullHandle } from "./pullHandle";
+import {
+  PULL_PATCH_SIZE,
+  pullHandle,
+  type PullPosition,
+} from "./pullHandle";
 import { useStore } from "../store";
 import "./PullTool.css";
 
-const PATCH = 1024;
+const PATCH = PULL_PATCH_SIZE;
 
 interface PullToolProps {
   /** Live panzoom instance from the parent CompositeView. */
@@ -97,15 +101,17 @@ export function PullTool({ pz }: PullToolProps) {
     e.stopPropagation();
   }, []);
 
-  const handlePull = useCallback(async () => {
+  const handlePull = useCallback(async (requestedPos?: PullPosition) => {
     const sourceCanvas = compositeStore.getCanvas();
     if (!sourceCanvas) return;
+    const pullPos = requestedPos ?? pos;
+    if (requestedPos) setPos(requestedPos);
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = PATCH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, PATCH, PATCH);
-    ctx.drawImage(sourceCanvas, -pos.x, -pos.y);
+    ctx.drawImage(sourceCanvas, -pullPos.x, -pullPos.y);
     const blob = await new Promise<Blob | null>((res) =>
       canvas.toBlob(res, "image/png"),
     );
@@ -113,8 +119,8 @@ export function PullTool({ pz }: PullToolProps) {
     const url = URL.createObjectURL(blob);
     set("baseImageURL", url);
     set("baseImgPosition", {
-      x: Math.round(pos.x),
-      y: Math.round(pos.y),
+      x: Math.round(pullPos.x),
+      y: Math.round(pullPos.y),
       width: PATCH,
       height: PATCH,
     });

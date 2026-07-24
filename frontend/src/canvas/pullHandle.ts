@@ -11,12 +11,21 @@
  * exactly one PullTool in the tree.
  */
 
-let pullHandler: (() => Promise<void>) | null = null;
+export const PULL_PATCH_SIZE = 1024;
+
+export interface PullPosition {
+  x: number;
+  y: number;
+}
+
+type PullHandler = (position?: PullPosition) => Promise<void>;
+
+let pullHandler: PullHandler | null = null;
 let homeHandler: (() => void) | null = null;
 
 export const pullHandle = {
   /** PullTool calls this on mount with its handler, and again with `null` on unmount. */
-  register(fn: (() => Promise<void>) | null): void {
+  register(fn: PullHandler | null): void {
     pullHandler = fn;
   },
   /** PullTool calls this on mount with its bbox-home handler. */
@@ -26,6 +35,13 @@ export const pullHandle = {
   /** No-op if no PullTool is mounted. */
   trigger(): Promise<void> {
     return pullHandler ? pullHandler() : Promise.resolve();
+  },
+  /** Move the bbox and pull from an explicit composite-space top-left. */
+  triggerAt(position: PullPosition): Promise<void> {
+    if (!pullHandler) {
+      return Promise.reject(new Error("Pull tool is unavailable."));
+    }
+    return pullHandler(position);
   },
   /** Move the bbox back to the current first-patch position. */
   triggerHome(): void {

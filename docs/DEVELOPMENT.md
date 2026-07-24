@@ -91,8 +91,9 @@ the product, distribution package, and command-line entry point use gazeCOM.
   (gradient styles + COM), `HeatmapInstance.ts` (h337 wrapper),
   `CompositeBounds.ts` (bounds/COM clamping), `PullTool.tsx` (1024² crop).
 - `trackers/` — seven sources behind one `Tracker` interface: WebGazer,
-  Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (the vision model
-  reports a point; `VLMTracker` renders `store.vlmPoint` through the normal
+  Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (the vision
+  model reports a frame-local point or a canvas point that drives Pull;
+  `VLMTracker` renders the resulting local `store.vlmPoint` through the normal
   heatmap sink). Factory in `trackers/index.ts`.
 - `generation/` — `pipeline.ts` (single `generateOnce` entry point),
   `workflows.ts` (weighted-random selection), `captureHeatmap.ts`, `llm.ts`

@@ -59,6 +59,7 @@ describe("settings files", () => {
   it("exports current settings without legacy keys", () => {
     writeJSON(StorageKeys.steps, 42);
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
+    writeJSON(StorageKeys.vlmScope, "canvas");
     writeJSON(StorageKeys.vlmPointPromptHeight, 180);
     writeJSON(StorageKeys.autoCollapsePanels, true);
     writeJSON(StorageKeys.mutedWorkflows, ["edit/example.json"]);
@@ -72,6 +73,7 @@ describe("settings files", () => {
       settings: {
         steps: 42,
         vlmModel: "gemma4:latest",
+        vlmScope: "canvas",
         vlmPointPromptHeight: 180,
         autoCollapsePanels: true,
         mutedWorkflows: ["edit/example.json"],

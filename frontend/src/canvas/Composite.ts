@@ -52,15 +52,11 @@ export interface PlanInput {
    */
   useCOM: boolean;
   /**
-   * Optional axis-aligned cap on canvas growth. When supplied, the new
-   * canvas is clipped to the `bounds` window after natural COM placement.
-   * The patch is not slid back inside the window; any part outside the
-   * bounds is simply not drawn. The box is expressed in the *previous
-   * canvas's* coordinate system — same frame as `prevPosition` — and the
-   * caller is responsible for keeping it in sync across coordinate-shift
-   * events (the same way `PullTool` keeps its bbox aligned).
+   * Optional maximum canvas dimensions. Natural placement remains unchanged;
+   * once the union of the previous canvas and new patch exceeds either axis,
+   * overflow is clipped on the growth side without sliding the patch inward.
    */
-  bounds?: PatchBox;
+  maxSize?: Size;
 }
 
 export interface PlanResult {
@@ -95,7 +91,7 @@ export interface PlanResult {
  * `prevSize` + `prevPosition`. See `PlanResult` for the meaning of fields.
  */
 export function planComposite(input: PlanInput): PlanResult {
-  const { prevSize, prevPosition, newSize, newCOM, useCOM, bounds } = input;
+  const { prevSize, prevPosition, newSize, newCOM, useCOM, maxSize } = input;
 
   // Where on the previous canvas do we anchor the new patch's center?
   // `useCOM` alone decides: set → anchor on the gaze center-of-mass over
@@ -124,31 +120,26 @@ export function planComposite(input: PlanInput): PlanResult {
   const naturalMaxX = Math.max(prevSize.width, newRawX + newSize.width);
   const naturalMaxY = Math.max(prevSize.height, newRawY + newSize.height);
 
-  let minX = naturalMinX;
-  let minY = naturalMinY;
-  let maxX = naturalMaxX;
-  let maxY = naturalMaxY;
-
-  // Apply optional canvas bounds as a clipping window, not as a placement
-  // clamp. Natural COM placement stays intact; the canvas just contains the
-  // intersection of the natural composite and the configured limit.
-  if (bounds) {
-    minX = Math.max(bounds.x, minX);
-    minY = Math.max(bounds.y, minY);
-    maxX = Math.min(bounds.x + bounds.width, maxX);
-    maxY = Math.min(bounds.y + bounds.height, maxY);
-
-    // Defensive fallback for stale or pathological bounds that do not
-    // intersect the current composite at all. This should not happen when
-    // bounds are derived from the tracked first patch, but fail-open is safer
-    // than producing a zero-sized canvas.
-    if (maxX <= minX || maxY <= minY) {
-      minX = naturalMinX;
-      minY = naturalMinY;
-      maxX = naturalMaxX;
-      maxY = naturalMaxY;
-    }
-  }
+  const xRange = capAxis({
+    naturalMin: naturalMinX,
+    naturalMax: naturalMaxX,
+    previousSize: prevSize.width,
+    patchStart: newRawX,
+    patchSize: newSize.width,
+    maxSize: maxSize?.width,
+  });
+  const yRange = capAxis({
+    naturalMin: naturalMinY,
+    naturalMax: naturalMaxY,
+    previousSize: prevSize.height,
+    patchStart: newRawY,
+    patchSize: newSize.height,
+    maxSize: maxSize?.height,
+  });
+  const minX = xRange.min;
+  const minY = yRange.min;
+  const maxX = xRange.max;
+  const maxY = yRange.max;
 
   const canvasSize: Size = {
     width: maxX - minX,
@@ -188,6 +179,59 @@ export function planComposite(input: PlanInput): PlanResult {
     newPosition,
     coordinateShift,
   };
+}
+
+/**
+ * Limit one axis while preserving natural patch placement. As long as the
+ * previous canvas fits within the cap, the selected interval also contains it
+ * in full. Once the previous canvas is already oversized (for example when a
+ * user enables a smaller cap mid-session), the interval follows the active
+ * patch and crops the old canvas rather than producing an invalid size.
+ */
+function capAxis(params: {
+  naturalMin: number;
+  naturalMax: number;
+  previousSize: number;
+  patchStart: number;
+  patchSize: number;
+  maxSize: number | undefined;
+}): { min: number; max: number } {
+  const {
+    naturalMin,
+    naturalMax,
+    previousSize,
+    patchStart,
+    patchSize,
+    maxSize,
+  } = params;
+  const naturalSize = naturalMax - naturalMin;
+  if (!maxSize || maxSize <= 0 || naturalSize <= maxSize) {
+    return { min: naturalMin, max: naturalMax };
+  }
+
+  // A cap-sized interval containing the previous 0..previousSize canvas can
+  // start anywhere in this range. When the previous canvas itself is larger
+  // than the cap, the same range describes every valid cap-sized crop of it.
+  const containsPreviousMin = Math.min(0, previousSize - maxSize);
+  const containsPreviousMax = Math.max(0, previousSize - maxSize);
+  const validStartMin = Math.max(naturalMin, containsPreviousMin);
+  const validStartMax = Math.min(
+    naturalMax - maxSize,
+    containsPreviousMax,
+  );
+
+  // Follow the generated patch where there is freedom to choose a window.
+  // This matters mainly when a cap is enabled after the canvas is oversized.
+  const preferredStart = patchStart + patchSize / 2 - maxSize / 2;
+  const start =
+    validStartMin <= validStartMax
+      ? clamp(preferredStart, validStartMin, validStartMax)
+      : clamp(preferredStart, naturalMin, naturalMax - maxSize);
+  return { min: start, max: start + maxSize };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 /**

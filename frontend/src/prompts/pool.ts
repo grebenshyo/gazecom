@@ -12,7 +12,7 @@
  * Conventions mirror the workflow pool:
  *   - Weights are integers 0–100.
  *   - Weights are relative and normalized implicitly during selection.
- *   - The pool is valid when at least one positive slot is unmuted.
+ *   - The pool is valid when at least one nonblank, positive slot is unmuted.
  *   - All helpers are pure and preserve slot order.
  */
 
@@ -202,18 +202,21 @@ export function setPromptSlotVisionEnabled(
   return next;
 }
 
-/** True when selection has at least one positive, unmuted slot. */
+/** True when selection has at least one nonblank, positive, unmuted slot. */
 export function promptPoolIsValid(slots: PromptSlots): boolean {
   return promptPoolHasActiveSlot(slots);
 }
 
 export function promptPoolHasActiveSlot(slots: PromptSlots): boolean {
-  return slots.some((slot) => !promptSlotMuted(slot) && slot.weight > 0);
+  return slots.some(
+    (slot) =>
+      !promptSlotMuted(slot) && slot.weight > 0 && slot.text.trim().length > 0,
+  );
 }
 
 /**
- * Weighted random pick over positive, unmuted slots. Returns the original
- * slot index so downstream transforms keep addressing the correct row.
+ * Weighted random pick over nonblank, positive, unmuted slots. Returns the
+ * original slot index so downstream transforms keep addressing the correct row.
  */
 export function pickPromptSlot(
   slots: PromptSlots,
@@ -221,7 +224,12 @@ export function pickPromptSlot(
 ): { text: string; index: number } | null {
   const active = slots
     .map((slot, index) => ({ slot, index }))
-    .filter(({ slot }) => !promptSlotMuted(slot) && slot.weight > 0);
+    .filter(
+      ({ slot }) =>
+        !promptSlotMuted(slot) &&
+        slot.weight > 0 &&
+        slot.text.trim().length > 0,
+    );
   if (active.length === 0) return null;
 
   const total = active.reduce((sum, { slot }) => sum + slot.weight, 0);

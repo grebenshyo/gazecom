@@ -163,8 +163,11 @@ function HelpPanel({
             </li>
             <li>
               <strong>VLM</strong> asks the selected vision model for the most
-              salient coordinate after each generation. Its first feedback
-              point starts at the exact frame center.
+              salient coordinate after each generation. Frame scope drives COM
+              within the latest patch; Canvas scope evaluates the complete
+              composite and centers Pull on the selected location. Select the
+              scope and coordinate prompt directly below Mode. Its first
+              feedback point starts at the exact frame center.
             </li>
           </ul>
           <p>
@@ -308,9 +311,10 @@ function HelpPanel({
           </ul>
           <p>
             Enable <strong>Limit canvas size</strong> under Advanced to set a
-            fixed width and height. Patches crossing that boundary are clipped
-            at the edge rather than shifted inward, so their placement remains
-            tied to the COM that produced them.
+            maximum width and height. The canvas grows naturally in whichever
+            direction COM or Pull drives it until that size is reached. Further
+            overflow is clipped rather than shifted inward, so placement remains
+            tied to the COM that produced it.
           </p>
         </section>
 
@@ -338,7 +342,7 @@ function HelpPanel({
           <p>
             Advanced contains heatmap and composite matte colors, eyedropper
             sampling, automatic download/clear intervals, canvas limits, the VLM
-            model and coordinate prompt, and WebGazer calibration-cache controls.
+            model, and WebGazer calibration-cache controls.
           </p>
           <p>
             View controls frame visibility, fit target, pull-box display and

@@ -20,49 +20,61 @@ export interface Rect {
   height: number;
 }
 
-/**
- * Bounds window centered on the first patch. Returns undefined when the
- * cap cannot fit the next patch; callers then fail open.
- */
-export function deriveCompositeBounds(
-  config: CompositeBoundsConfig,
-  firstPatch: PatchBoxLike,
-  nextSize: { width: number; height: number },
-): Rect | undefined {
-  if (!config.enabled) return undefined;
-  if (firstPatch.width === 0 || firstPatch.height === 0) return undefined;
-  if (config.width < nextSize.width || config.height < nextSize.height) {
-    return undefined;
-  }
+export interface SizeLike {
+  width: number;
+  height: number;
+}
 
-  const fpCenterX = firstPatch.x + firstPatch.width / 2;
-  const fpCenterY = firstPatch.y + firstPatch.height / 2;
+/** Validate the configured canvas-size cap. */
+export function deriveCompositeMaxSize(
+  config: CompositeBoundsConfig,
+): SizeLike | undefined {
+  if (!config.enabled) return undefined;
+  if (config.width <= 0 || config.height <= 0) return undefined;
+  return { width: config.width, height: config.height };
+}
+
+/**
+ * Derive the absolute point range that can still produce a canvas no larger
+ * than `maxSize`. Before an axis reaches its cap, this range extends beyond
+ * both current edges so generation can grow naturally in either direction.
+ * At the cap it collapses to the current 0..size canvas interval.
+ */
+export function deriveCOMBounds(
+  maxSize: SizeLike | undefined,
+  compositeSize: SizeLike,
+): Rect | undefined {
+  if (!maxSize) return undefined;
+  if (compositeSize.width <= 0 || compositeSize.height <= 0) return undefined;
+
+  const x = Math.min(0, compositeSize.width - maxSize.width);
+  const y = Math.min(0, compositeSize.height - maxSize.height);
+  const maxX = Math.max(compositeSize.width, maxSize.width);
+  const maxY = Math.max(compositeSize.height, maxSize.height);
   return {
-    x: Math.round(fpCenterX - config.width / 2),
-    y: Math.round(fpCenterY - config.height / 2),
-    width: config.width,
-    height: config.height,
+    x,
+    y,
+    width: maxX - x,
+    height: maxY - y,
   };
 }
 
 /**
  * Convert a composite-space bounds box into the heatmap-space COM rectangle
- * that keeps the next patch fully inside that box.
+ * that keeps the attention point itself inside that box. The generated patch
+ * may extend beyond it; compositing clips that overflow without moving it.
  */
 export function deriveRoamConstraint(params: {
   bounds: Rect;
   basePosition: PatchBoxLike;
-  nextSize: { width: number; height: number };
   containerSize: ContainerSize;
 }): RoamConstraint | undefined {
-  const { bounds, basePosition, nextSize, containerSize } = params;
+  const { bounds, basePosition, containerSize } = params;
   if (
     basePosition.width <= 0 ||
     basePosition.height <= 0 ||
     containerSize.width <= 0 ||
-    containerSize.height <= 0 ||
-    nextSize.width <= 0 ||
-    nextSize.height <= 0
+    containerSize.height <= 0
   ) {
     return undefined;
   }
@@ -72,7 +84,6 @@ export function deriveRoamConstraint(params: {
     boundsSize: bounds.width,
     baseStart: basePosition.x,
     baseSize: basePosition.width,
-    nextSize: nextSize.width,
     containerSize: containerSize.width,
   });
   const yRange = deriveAxisRange({
@@ -80,7 +91,6 @@ export function deriveRoamConstraint(params: {
     boundsSize: bounds.height,
     baseStart: basePosition.y,
     baseSize: basePosition.height,
-    nextSize: nextSize.height,
     containerSize: containerSize.height,
   });
   if (!xRange || !yRange) return undefined;
@@ -94,32 +104,24 @@ export function deriveRoamConstraint(params: {
 }
 
 /**
- * Clamp a normalized COM so the next patch — anchored at
- * `base + com × baseSize` and centered on that anchor — stays inside the
- * bounds window.
+ * Clamp a normalized COM so its absolute anchor point stays inside the bounds
+ * window. The patch remains centered on that exact point and may cross the
+ * boundary; `planComposite` clips the overflow afterward.
  *
  * Placement-level counterpart to `deriveRoamConstraint`: that one nudges
  * the synthetic roamers' *samples*, so only roam/roam2 ever respected the
- * canvas cap. Every other COM source (VLM point, cursor, the camera
- * trackers) knows nothing about bounds — once a patch walked outside the
- * window, planComposite clipped it entirely and, with the base patch now
- * stranded outside, every later patch too: generations kept succeeding
- * while the composite sat idle. Clamping the pipeline's final COM here
- * guards placement for every mode.
+ * canvas cap. Every other COM source (VLM point, cursor, the camera trackers)
+ * knows nothing about bounds, so the pipeline applies the same point-level
+ * constraint before placement.
  *
- * The result is intentionally NOT limited to [0, 1]: when the base sits
- * outside the window, the feasible range lies beyond the base patch and
- * an out-of-range COM is exactly what pulls placement back inside in a
- * single step.
- *
- * Fails open (returns `com` unchanged) when an axis has no feasible
- * anchor — mirroring planComposite's degenerate-bounds fallback.
+ * The result is intentionally NOT limited to [0, 1]: when the entire active
+ * frame lies beyond the window, an out-of-range COM can place its anchor back
+ * on the nearest boundary in one step.
  */
 export function clampCOMToBounds(
   com: { x: number; y: number },
   bounds: Rect | undefined,
   basePosition: PatchBoxLike,
-  nextSize: { width: number; height: number },
 ): { x: number; y: number } {
   if (!bounds) return com;
   if (basePosition.width <= 0 || basePosition.height <= 0) return com;
@@ -130,7 +132,6 @@ export function clampCOMToBounds(
       boundsSize: bounds.width,
       baseStart: basePosition.x,
       baseSize: basePosition.width,
-      nextSize: nextSize.width,
     }),
     y: clampAxisCOM({
       com: com.y,
@@ -138,7 +139,6 @@ export function clampCOMToBounds(
       boundsSize: bounds.height,
       baseStart: basePosition.y,
       baseSize: basePosition.height,
-      nextSize: nextSize.height,
     }),
   };
 }
@@ -149,13 +149,10 @@ function clampAxisCOM(params: {
   boundsSize: number;
   baseStart: number;
   baseSize: number;
-  nextSize: number;
 }): number {
-  const { com, boundsStart, boundsSize, baseStart, baseSize, nextSize } =
-    params;
-  const minCOM = (boundsStart + nextSize / 2 - baseStart) / baseSize;
-  const maxCOM =
-    (boundsStart + boundsSize - nextSize / 2 - baseStart) / baseSize;
+  const { com, boundsStart, boundsSize, baseStart, baseSize } = params;
+  const minCOM = (boundsStart - baseStart) / baseSize;
+  const maxCOM = (boundsStart + boundsSize - baseStart) / baseSize;
   if (!Number.isFinite(minCOM) || !Number.isFinite(maxCOM)) return com;
   if (minCOM > maxCOM) return com;
   if (com < minCOM) return minCOM;
@@ -168,14 +165,11 @@ function deriveAxisRange(params: {
   boundsSize: number;
   baseStart: number;
   baseSize: number;
-  nextSize: number;
   containerSize: number;
 }): { min: number; max: number } | undefined {
-  const { boundsStart, boundsSize, baseStart, baseSize, nextSize, containerSize } =
-    params;
-  const minCOM = (boundsStart + nextSize / 2 - baseStart) / baseSize;
-  const maxCOM =
-    (boundsStart + boundsSize - nextSize / 2 - baseStart) / baseSize;
+  const { boundsStart, boundsSize, baseStart, baseSize, containerSize } = params;
+  const minCOM = (boundsStart - baseStart) / baseSize;
+  const maxCOM = (boundsStart + boundsSize - baseStart) / baseSize;
 
   if (!Number.isFinite(minCOM) || !Number.isFinite(maxCOM)) return undefined;
   if (minCOM > maxCOM) return undefined;

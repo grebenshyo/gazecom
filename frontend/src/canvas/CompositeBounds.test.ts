@@ -1,67 +1,103 @@
 import { describe, expect, it } from "vitest";
 
-import { planComposite } from "./Composite";
 import {
   clampCOMToBounds,
-  deriveCompositeBounds,
+  deriveCOMBounds,
+  deriveCompositeMaxSize,
   deriveRoamConstraint,
 } from "./CompositeBounds";
 
-describe("deriveCompositeBounds", () => {
-  it("centers the bounds window on the first patch", () => {
+describe("deriveCompositeMaxSize", () => {
+  it("returns the enabled positive size cap", () => {
     expect(
-      deriveCompositeBounds(
-        { enabled: true, width: 2048, height: 2048 },
-        { x: 0, y: 0, width: 1024, height: 1024 },
-        { width: 1024, height: 1024 },
-      ),
-    ).toEqual({ x: -512, y: -512, width: 2048, height: 2048 });
+      deriveCompositeMaxSize({
+        enabled: true,
+        width: 2048,
+        height: 1536,
+      }),
+    ).toEqual({ width: 2048, height: 1536 });
   });
 
-  it("fails open when the bounds cap cannot fit the next patch", () => {
+  it("returns undefined when disabled or invalid", () => {
     expect(
-      deriveCompositeBounds(
-        { enabled: true, width: 512, height: 2048 },
-        { x: 0, y: 0, width: 1024, height: 1024 },
-        { width: 1024, height: 1024 },
-      ),
+      deriveCompositeMaxSize({
+        enabled: false,
+        width: 2048,
+        height: 2048,
+      }),
+    ).toBeUndefined();
+    expect(
+      deriveCompositeMaxSize({ enabled: true, width: 0, height: 2048 }),
     ).toBeUndefined();
   });
 });
 
+describe("deriveCOMBounds", () => {
+  const maxSize = { width: 2048, height: 2048 };
+
+  it("allows growth beyond both edges while the canvas is below the cap", () => {
+    expect(
+      deriveCOMBounds(maxSize, { width: 1024, height: 1536 }),
+    ).toEqual({
+      x: -1024,
+      y: -512,
+      width: 3072,
+      height: 2560,
+    });
+  });
+
+  it("matches the canvas edges once the cap is reached", () => {
+    expect(
+      deriveCOMBounds(maxSize, { width: 2048, height: 2048 }),
+    ).toEqual({
+      x: 0,
+      y: 0,
+      width: 2048,
+      height: 2048,
+    });
+  });
+});
+
 describe("deriveRoamConstraint", () => {
-  const bounds = { x: -512, y: -512, width: 2048, height: 2048 };
-  const nextSize = { width: 1024, height: 1024 };
   const containerSize = { width: 1024, height: 1024 };
 
-  it("maps a centered base patch to the full heatmap range", () => {
+  it("keeps the full local range while the canvas can still grow", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 1536, height: 1536 },
+    )!;
     expect(
       deriveRoamConstraint({
         bounds,
-        basePosition: { x: 0, y: 0, width: 1024, height: 1024 },
-        nextSize,
+        basePosition: { x: 512, y: 512, width: 1024, height: 1024 },
         containerSize,
       }),
     ).toEqual({ minX: 0, maxX: 1024, minY: 0, maxY: 1024 });
   });
 
-  it("narrows COM range near a bounds edge", () => {
+  it("narrows the local range after the canvas reaches its cap", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 2048, height: 2048 },
+    )!;
     expect(
       deriveRoamConstraint({
         bounds,
-        basePosition: { x: 512, y: 0, width: 1024, height: 1024 },
-        nextSize,
+        basePosition: { x: 1536, y: 0, width: 1024, height: 1024 },
         containerSize,
       }),
     ).toEqual({ minX: 0, maxX: 512, minY: 0, maxY: 1024 });
   });
 
   it("collapses to the nearest edge when recovering from outside bounds", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 2048, height: 2048 },
+    )!;
     expect(
       deriveRoamConstraint({
         bounds,
-        basePosition: { x: 1536, y: 0, width: 1024, height: 1024 },
-        nextSize,
+        basePosition: { x: 2048, y: 0, width: 1024, height: 1024 },
         containerSize,
       }),
     ).toEqual({ minX: 0, maxX: 0, minY: 0, maxY: 1024 });
@@ -69,47 +105,46 @@ describe("deriveRoamConstraint", () => {
 });
 
 describe("clampCOMToBounds", () => {
-  const bounds = { x: -512, y: -512, width: 2048, height: 2048 };
-  const nextSize = { width: 1024, height: 1024 };
-
-  it("keeps an edge-seeking VLM patch fully inside the bounds", () => {
+  it("allows the COM point to grow toward a not-yet-reached cap", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 1536, height: 1024 },
+    );
     const basePosition = { x: 512, y: 0, width: 1024, height: 1024 };
     const com = clampCOMToBounds(
       { x: 1, y: 0.5 },
       bounds,
       basePosition,
-      nextSize,
     );
-    expect(com).toEqual({ x: 0.5, y: 0.5 });
-
-    const plan = planComposite({
-      prevSize: { width: 2048, height: 1024 },
-      prevPosition: basePosition,
-      newSize: nextSize,
-      newCOM: com,
-      workflow: "edit",
-      useCOM: true,
-      bounds,
-    });
-    expect(plan.newPosition.x).toBeGreaterThanOrEqual(0);
-    expect(plan.newPosition.y).toBeGreaterThanOrEqual(0);
-    expect(plan.newPosition.x + plan.newPosition.width).toBeLessThanOrEqual(
-      plan.canvasSize.width,
-    );
-    expect(plan.newPosition.y + plan.newPosition.height).toBeLessThanOrEqual(
-      plan.canvasSize.height,
-    );
+    expect(com).toEqual({ x: 1, y: 0.5 });
   });
 
-  it("uses an out-of-range COM to recover a stranded base patch", () => {
+  it("clamps an over-bound point after the cap is reached", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 2048, height: 2048 },
+    );
     expect(
       clampCOMToBounds(
         { x: 1, y: 0.5 },
         bounds,
         { x: 1536, y: 0, width: 1024, height: 1024 },
-        nextSize,
       ),
-    ).toEqual({ x: -0.5, y: 0.5 });
+    ).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it("uses an out-of-range COM to recover a stranded base patch", () => {
+    const bounds = deriveCOMBounds(
+      { width: 2048, height: 2048 },
+      { width: 2048, height: 2048 },
+    );
+    expect(
+      clampCOMToBounds(
+        { x: 1, y: 0.5 },
+        bounds,
+        { x: 2048, y: 0, width: 1024, height: 1024 },
+      ),
+    ).toEqual({ x: 0, y: 0.5 });
   });
 
   it("leaves COM unchanged when bounds are disabled", () => {
@@ -118,7 +153,6 @@ describe("clampCOMToBounds", () => {
         { x: 0.9, y: 0.1 },
         undefined,
         { x: 512, y: 0, width: 1024, height: 1024 },
-        nextSize,
       ),
     ).toEqual({ x: 0.9, y: 0.1 });
   });

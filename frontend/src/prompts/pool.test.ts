@@ -377,20 +377,19 @@ describe("promptPoolIsValid", () => {
     expect(promptPoolIsValid([])).toBe(false);
   });
 
-  it("accepts any total with a positive, unmuted slot", () => {
-    expect(promptPoolIsValid(baseOnly())).toBe(true);
+  it("accepts any total with a nonblank, positive, unmuted slot", () => {
     expect(
       promptPoolIsValid([
-        { text: "", weight: 12, height: null },
-        { text: "", weight: 3, height: null },
+        { text: "first", weight: 12, height: null },
+        { text: "second", weight: 3, height: null },
       ]),
     ).toBe(true);
     expect(
-      promptPoolIsValid([{ text: "", weight: 1, height: null }]),
+      promptPoolIsValid([{ text: "prompt", weight: 1, height: null }]),
     ).toBe(true);
   });
 
-  it("requires at least one positive, unmuted slot", () => {
+  it("requires at least one nonblank, positive, unmuted slot", () => {
     const slots: PromptSlots = [
       { text: "a", weight: 60, height: null },
       { text: "b", weight: 40, height: null, muted: true },
@@ -407,6 +406,12 @@ describe("promptPoolIsValid", () => {
         { text: "b", weight: 0, height: null },
       ]),
     ).toBe(false);
+    expect(
+      promptPoolIsValid([
+        { text: "", weight: 100, height: null },
+        { text: "   ", weight: 100, height: null },
+      ]),
+    ).toBe(false);
   });
 });
 
@@ -416,10 +421,12 @@ describe("pickPromptSlot", () => {
   });
 
   it("always returns the single slot when only one exists", () => {
-    const slots = baseOnly();
+    const slots: PromptSlots = [
+      { text: "base prompt", weight: 100, height: null },
+    ];
     for (let i = 0; i < 50; i++) {
       expect(pickPromptSlot(slots, seededRng(i))).toEqual({
-        text: "",
+        text: "base prompt",
         index: 0,
       });
     }
@@ -481,5 +488,25 @@ describe("pickPromptSlot", () => {
       { text: "c", weight: 20, height: null },
     ];
     expect(pickPromptSlot(slots, () => 0)).toEqual({ text: "b", index: 1 });
+  });
+
+  it("skips blank slots while retaining original indices", () => {
+    const slots: PromptSlots = [
+      { text: "   ", weight: 50, height: null },
+      { text: "usable", weight: 30, height: null },
+      { text: "", weight: 20, height: null },
+    ];
+    expect(pickPromptSlot(slots, () => 0.9)).toEqual({
+      text: "usable",
+      index: 1,
+    });
+  });
+
+  it("returns null when every weighted slot is blank", () => {
+    const slots: PromptSlots = [
+      { text: "", weight: 50, height: null },
+      { text: "   ", weight: 50, height: null },
+    ];
+    expect(pickPromptSlot(slots)).toBeNull();
   });
 });

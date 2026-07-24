@@ -33,8 +33,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-DEFAULT_EMPTY_PROMPT = "Muppet with a Pearl Earring, painting by Vermeer"
-
 
 def _resolve_input_image(
     image: UploadFile | None,
@@ -78,6 +76,10 @@ async def generate(
     skip_provider_errors: bool = Form(False),
     settings: Settings = Depends(get_settings),
 ):
+    clean_prompt = prompt.strip()
+    if not clean_prompt:
+        raise HTTPException(400, "Prompt is required.")
+
     client = ComfyClient(resolve_comfy_host(settings))
 
     # 1. Resolve the input image bytes and upload them to ComfyUI over its
@@ -118,7 +120,7 @@ async def generate(
             "{input_image}": input_filename,
             "{output_prefix}": output_prefix,
             "{seed}": random.randint(1, 1_000_000),
-            "{prompt}": prompt.strip() or DEFAULT_EMPTY_PROMPT,
+            "{prompt}": clean_prompt,
             "{steps}": steps,
         },
     )

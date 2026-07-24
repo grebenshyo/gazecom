@@ -28,6 +28,7 @@ import {
   useStore,
   type LLMModel,
   type TrackingMode,
+  type VLMScope,
 } from "../store";
 import { compositeStore } from "../canvas/CompositeStore";
 import { pullHandle } from "../canvas/pullHandle";
@@ -94,6 +95,11 @@ const HEATMAP_STYLE_OPTIONS: ReadonlyArray<{
   { value: "classic", label: "Blackbody" },
   { value: "grayscale", label: "Grayscale" },
   { value: "spectral", label: "Spectral" },
+];
+
+const VLM_SCOPE_OPTIONS: ReadonlyArray<{ value: VLMScope; label: string }> = [
+  { value: "frame", label: "Frame" },
+  { value: "canvas", label: "Canvas" },
 ];
 
 const AUTO_ENHANCE_ICONS: Record<PromptAutoEnhanceMode, string> = {
@@ -207,7 +213,7 @@ export function ControlPanel({
       if (timer !== null) window.clearTimeout(timer);
       observer.disconnect();
     };
-  }, [s.panelMinimized]);
+  }, [s.panelMinimized, s.trackingMode]);
 
   const setMatteColor = (value: string) => {
     const color = normalizeMatteColor(value);
@@ -695,7 +701,8 @@ export function ControlPanel({
         </Button>
         {!promptHasActiveSlot && (
           <p className="gz-pool-warning">
-            Unmute a prompt slot with a weight above 0 to generate.
+            Enter text in an unmuted prompt slot with a weight above 0 to
+            generate.
           </p>
         )}
         {/* List / Template / LLM controls — revealed by the ⚙ in
@@ -927,6 +934,36 @@ export function ControlPanel({
           options={TRACKING_MODE_OPTIONS}
           onChange={(v) => s.set("trackingMode", v)}
         />
+        {s.trackingMode === "vlm" && (
+          <>
+            <Dropdown<VLMScope>
+              label="VLM scope"
+              value={s.vlmScope}
+              options={VLM_SCOPE_OPTIONS}
+              onChange={(v) => s.set("vlmScope", v)}
+            />
+            {/* Coordinate instruction used only by the VLM tracker. Prompt-slot
+                vision uses each slot's own text instead. */}
+            <label className="gz-prompt-settings-textarea">
+              <span className="gz-prompt-settings-textarea__label">
+                VLM prompt
+              </span>
+              <textarea
+                ref={vlmPromptRef}
+                className="gz-prompt-settings-textarea__input"
+                value={s.vlmPointPrompt}
+                spellCheck={false}
+                rows={3}
+                style={{ height: s.vlmPointPromptHeight }}
+                onChange={(e) => s.set("vlmPointPrompt", e.target.value)}
+                onPointerUp={(e) => {
+                  const height = e.currentTarget.offsetHeight;
+                  if (height > 0) s.set("vlmPointPromptHeight", height);
+                }}
+              />
+            </label>
+          </>
+        )}
         {/* Speed only applies to the synthetic roamers (roam / roam2) —
             real-input trackers have no travel speed to scale. */}
         {(s.trackingMode === "roam" || s.trackingMode === "roam2") && (
@@ -1192,9 +1229,7 @@ export function ControlPanel({
           // blur. Clamping in the parent's onChange runs on every
           // keystroke, which prevents the user from typing any value
           // smaller than the current one (each keystroke would snap up
-          // to the floor before they finish typing). Transient
-          // sub-min values are tolerated upstream: deriveBounds in the
-          // pipeline fail-opens when boundsWidth < newSize.width.
+          // to the floor before they finish typing).
           onChange={(v) => s.set("boundsWidth", v)}
           disabled={!s.boundsEnabled}
         />
@@ -1213,27 +1248,6 @@ export function ControlPanel({
           onChange={(v) => s.set("vlmModel", v)}
           disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
         />
-        {/* VLM-mode instruction: the vision model returns the single salient
-            point that drives COM in VLM tracking mode. Sent to /api/llm/point;
-            empty falls back to the backend default. */}
-        <label className="gz-prompt-settings-textarea">
-          <span className="gz-prompt-settings-textarea__label">
-            VLM prompt
-          </span>
-          <textarea
-            ref={vlmPromptRef}
-            className="gz-prompt-settings-textarea__input"
-            value={s.vlmPointPrompt}
-            spellCheck={false}
-            rows={3}
-            style={{ height: s.vlmPointPromptHeight }}
-            onChange={(e) => s.set("vlmPointPrompt", e.target.value)}
-            onPointerUp={(e) => {
-              const height = e.currentTarget.offsetHeight;
-              if (height > 0) s.set("vlmPointPromptHeight", height);
-            }}
-          />
-        </label>
         <Toggle
           label="Calibration cache (reuse saved model between sessions)"
           checked={s.calibCache}

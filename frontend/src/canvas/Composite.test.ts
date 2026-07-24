@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planComposite, type PatchBox, type PlanInput } from "./Composite";
+import { planComposite, type PlanInput } from "./Composite";
 
 /**
  * The "first patch" baseline matches what legacy ImageProcessor sets up at
@@ -129,118 +129,182 @@ describe("planComposite — draw order", () => {
   });
 });
 
-describe("planComposite — bounds clipping", () => {
-  // Symmetric 2048×2048 cap centered on a first patch at (0,0). Box spans
-  // x: -512..1536, y: -512..1536 in the previous-canvas coord frame.
-  const sym2048: PatchBox = {
-    x: -512,
-    y: -512,
-    width: 2048,
-    height: 2048,
-  };
-
+describe("planComposite — maximum canvas size", () => {
   it("does nothing when the natural placement already fits", () => {
     const plan = planComposite(
       baseInput({
         workflow: "inpainting",
         useCOM: true,
         newCOM: { x: 0.6, y: 0.6 },
-        bounds: sym2048,
+        maxSize: { width: 2048, height: 2048 },
       }),
     );
-    // Anchor=(614, 614), newRaw=(102, 102) — well inside the cap.
     expect(plan.newDrawAt).toEqual({ x: 102, y: 102 });
     expect(plan.coordinateShift).toEqual({ x: 0, y: 0 });
   });
 
-  it("keeps natural placement when COM reaches the bound", () => {
-    const plan = planComposite(
+  it("reaches the cap through one-directional growth before clipping", () => {
+    const first = planComposite(
       baseInput({
         workflow: "inpainting",
         useCOM: true,
         newCOM: { x: 1.0, y: 1.0 },
-        bounds: sym2048,
+        maxSize: { width: 2048, height: 2048 },
       }),
     );
-    // Without bounds: anchor=(1024,1024) → newRaw=(512,512), patch ends at
-    // (1536,1536) which is on the bound's edge.
-    expect(plan.newDrawAt).toEqual({ x: 512, y: 512 });
-    expect(plan.coordinateShift).toEqual({ x: 0, y: 0 });
+    expect(first.canvasSize).toEqual({ width: 1536, height: 1536 });
+
+    const second = planComposite({
+      prevSize: first.canvasSize,
+      prevPosition: first.newPosition,
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 1, y: 1 },
+      workflow: "inpainting",
+      useCOM: true,
+      maxSize: { width: 2048, height: 2048 },
+    });
+    expect(second.canvasSize).toEqual({ width: 2048, height: 2048 });
+    expect(second.newDrawAt).toEqual({ x: 1024, y: 1024 });
+
+    const third = planComposite({
+      prevSize: second.canvasSize,
+      prevPosition: second.newPosition,
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 1, y: 1 },
+      workflow: "inpainting",
+      useCOM: true,
+      maxSize: { width: 2048, height: 2048 },
+    });
+    expect(third.canvasSize).toEqual({ width: 2048, height: 2048 });
+    expect(third.newDrawAt).toEqual({ x: 1536, y: 1536 });
+    expect(third.newPosition.x + third.newPosition.width).toBeGreaterThan(
+      third.canvasSize.width,
+    );
   });
 
-  it("clips left/up growth at the bound without sliding the patch", () => {
-    const plan = planComposite(
+  it("reaches the cap through left/up growth and then clips in place", () => {
+    const first = planComposite(
       baseInput({
         workflow: "inpainting",
         useCOM: true,
         newCOM: { x: 0.0, y: 0.0 },
-        bounds: sym2048,
+        maxSize: { width: 2048, height: 2048 },
       }),
     );
-    // Without bounds: anchor=(0,0) → newRaw=(-512,-512). Bound's left edge
-    // is exactly -512, so clipping preserves the natural placement.
-    expect(plan.newDrawAt).toEqual({ x: 0, y: 0 });
-    expect(plan.coordinateShift).toEqual({ x: 512, y: 512 });
-    expect(plan.canvasSize).toEqual({ width: 1536, height: 1536 });
-  });
+    expect(first.canvasSize).toEqual({ width: 1536, height: 1536 });
+    expect(first.coordinateShift).toEqual({ x: 512, y: 512 });
 
-  it("clips a runaway COM at the boundary without moving the patch", () => {
-    // Exaggerate the previous patch position to force a far placement.
-    const plan = planComposite({
-      prevSize: { width: 2048, height: 2048 },
-      prevPosition: { x: 1024, y: 1024, width: 1024, height: 1024 },
+    const second = planComposite({
+      prevSize: first.canvasSize,
+      prevPosition: first.newPosition,
       newSize: { width: 1024, height: 1024 },
-      newCOM: { x: 1.0, y: 1.0 },
+      newCOM: { x: 0, y: 0 },
       workflow: "inpainting",
       useCOM: true,
-      bounds: { x: -512, y: -512, width: 2048, height: 2048 },
+      maxSize: { width: 2048, height: 2048 },
     });
-    // Natural placement: anchor=(2048,2048) → newRaw=(1536,1536), patch
-    // would reach (2560,2560) — well past the cap's right edge at 1536.
-    // Clipping keeps that natural top-left rather than sliding it back.
-    expect(plan.newDrawAt).toEqual({ x: 1536, y: 1536 });
-    expect(plan.canvasSize).toEqual({ width: 1536, height: 1536 });
+    expect(second.canvasSize).toEqual({ width: 2048, height: 2048 });
+    expect(second.coordinateShift).toEqual({ x: 512, y: 512 });
+
+    const third = planComposite({
+      prevSize: second.canvasSize,
+      prevPosition: second.newPosition,
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 0, y: 0 },
+      workflow: "inpainting",
+      useCOM: true,
+      maxSize: { width: 2048, height: 2048 },
+    });
+    expect(third.canvasSize).toEqual({ width: 2048, height: 2048 });
+    expect(third.coordinateShift).toEqual({ x: 0, y: 0 });
+    expect(third.newDrawAt).toEqual({ x: -512, y: -512 });
+  });
+
+  it("an off-canvas Pull below the cap expands to the cap immediately", () => {
+    const plan = planComposite({
+      prevSize: { width: 1280, height: 1280 },
+      prevPosition: { x: 1800, y: 1800, width: 1024, height: 1024 },
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 0.5, y: 0.5 },
+      workflow: "inpainting",
+      useCOM: true,
+      maxSize: { width: 2048, height: 2048 },
+    });
+    expect(plan.canvasSize).toEqual({ width: 2048, height: 2048 });
+    expect(plan.newDrawAt).toEqual({ x: 1800, y: 1800 });
     expect(plan.coordinateShift).toEqual({ x: 0, y: 0 });
   });
 
-  it("supports negative coordinate shifts when bounds crop left/top", () => {
-    const plan = planComposite({
-      prevSize: { width: 2048, height: 1024 },
-      prevPosition: { x: 1024, y: 0, width: 1024, height: 1024 },
-      newSize: { width: 1024, height: 1024 },
-      newCOM: { x: 0.0, y: 0.5 },
-      workflow: "inpainting",
-      useCOM: true,
-      bounds: { x: 512, y: 0, width: 2048, height: 1024 },
-    });
-    // The bounded canvas starts at previous x=512, so both old content and
-    // the naturally-placed new patch are drawn left by 512px.
-    expect(plan.canvasSize).toEqual({ width: 1536, height: 1024 });
-    expect(plan.prevDrawAt).toEqual({ x: -512, y: 0 });
-    expect(plan.newDrawAt).toEqual({ x: 0, y: 0 });
-    expect(plan.coordinateShift).toEqual({ x: -512, y: 0 });
+  it("preserves the existing canvas and exact patch offset under the cap", () => {
+    for (const previousSize of [1024, 1280, 1536, 2048]) {
+      for (const patchStart of [-1536, -512, 0, 1024, 1800]) {
+        const plan = planComposite({
+          prevSize: { width: previousSize, height: previousSize },
+          // With a centered COM and equal patch/base dimensions, this is also
+          // the new patch's natural top-left.
+          prevPosition: {
+            x: patchStart,
+            y: patchStart,
+            width: 1024,
+            height: 1024,
+          },
+          newSize: { width: 1024, height: 1024 },
+          newCOM: { x: 0.5, y: 0.5 },
+          workflow: "edit",
+          useCOM: true,
+          maxSize: { width: 2048, height: 2048 },
+        });
+
+        expect(plan.canvasSize.width).toBeLessThanOrEqual(2048);
+        expect(plan.canvasSize.height).toBeLessThanOrEqual(2048);
+        expect(plan.prevDrawAt.x).toBeGreaterThanOrEqual(0);
+        expect(plan.prevDrawAt.y).toBeGreaterThanOrEqual(0);
+        expect(plan.prevDrawAt.x + previousSize).toBeLessThanOrEqual(
+          plan.canvasSize.width,
+        );
+        expect(plan.prevDrawAt.y + previousSize).toBeLessThanOrEqual(
+          plan.canvasSize.height,
+        );
+        expect(plan.newDrawAt.x - plan.prevDrawAt.x).toBe(patchStart);
+        expect(plan.newDrawAt.y - plan.prevDrawAt.y).toBe(patchStart);
+      }
+    }
   });
 
-  it("does not interfere with non-bounds runs", () => {
-    // Same input, bounds omitted — should match a baseline in-/outpainting plan.
-    const withoutBounds = planComposite(
+  it("crops an already-oversized canvas toward the active patch", () => {
+    const plan = planComposite({
+      prevSize: { width: 2500, height: 1024 },
+      prevPosition: { x: 2000, y: 0, width: 1024, height: 1024 },
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 0.5, y: 0.5 },
+      workflow: "edit",
+      useCOM: true,
+      maxSize: { width: 2048, height: 2048 },
+    });
+    expect(plan.canvasSize).toEqual({ width: 2048, height: 1024 });
+    expect(plan.prevDrawAt).toEqual({ x: -452, y: 0 });
+    expect(plan.newDrawAt).toEqual({ x: 1548, y: 0 });
+    expect(plan.coordinateShift).toEqual({ x: -452, y: 0 });
+  });
+
+  it("does not interfere when the cap is omitted", () => {
+    const withoutCap = planComposite(
       baseInput({
         workflow: "inpainting",
         useCOM: true,
         newCOM: { x: 0.75, y: 0.25 },
       }),
     );
-    const withBounds = planComposite(
+    const withCap = planComposite(
       baseInput({
         workflow: "inpainting",
         useCOM: true,
         newCOM: { x: 0.75, y: 0.25 },
-        bounds: sym2048,
+        maxSize: { width: 2048, height: 2048 },
       }),
     );
-    // The natural placement fits, so the two plans must be identical.
-    expect(withoutBounds.newDrawAt).toEqual(withBounds.newDrawAt);
-    expect(withoutBounds.canvasSize).toEqual(withBounds.canvasSize);
+    expect(withoutCap.newDrawAt).toEqual(withCap.newDrawAt);
+    expect(withoutCap.canvasSize).toEqual(withCap.canvasSize);
   });
 });
 

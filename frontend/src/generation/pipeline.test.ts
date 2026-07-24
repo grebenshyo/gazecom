@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   inputKindFor,
+  pullPositionForCanvasPoint,
   resolveInputCOM,
   resolvePromptTransforms,
 } from "./pipeline";
@@ -55,6 +56,26 @@ describe("resolveInputCOM", () => {
         containerSize,
       }),
     ).toEqual({ x: 0.1, y: 0.2 });
+  });
+});
+
+describe("pullPositionForCanvasPoint", () => {
+  it("centers the Pull frame on a normalized canvas point", () => {
+    expect(
+      pullPositionForCanvasPoint(
+        { x: 0.75, y: 0.25 },
+        { width: 2048, height: 1024 },
+      ),
+    ).toEqual({ x: 1024, y: -256 });
+  });
+
+  it("keeps edge pulls outside current content instead of clamping the box", () => {
+    expect(
+      pullPositionForCanvasPoint(
+        { x: 0, y: 1 },
+        { width: 1024, height: 1024 },
+      ),
+    ).toEqual({ x: -512, y: 512 });
   });
 });
 

@@ -26,9 +26,11 @@ import type { HeatmapInstance } from "../canvas/HeatmapInstance";
 import { applyPlan, planComposite } from "../canvas/Composite";
 import {
   clampCOMToBounds,
-  deriveCompositeBounds,
+  deriveCOMBounds,
+  deriveCompositeMaxSize,
 } from "../canvas/CompositeBounds";
 import { compositeStore } from "../canvas/CompositeStore";
+import { PULL_PATCH_SIZE, pullHandle } from "../canvas/pullHandle";
 import { clearAndReseed } from "../canvas/clearAndReseed";
 import { downloadComposite } from "../canvas/downloadComposite";
 import { gazeCOM } from "../canvas/Heatmap";
@@ -48,6 +50,7 @@ import {
   captureHeatmapOnBase,
   captureVisionFrame,
   captureVisionFrameFromCanvas,
+  captureVisionCanvas,
   cropAroundCanvasPoint,
   cropAroundPoint,
   flattenAlphaOnBg,
@@ -128,44 +131,44 @@ export async function generateOnce(
     // 2. Resolve prompt.
     //   Pick a slot from the rotation pool, run its text through
     //   `replaceAllPlaceholders`, and use it. The Generate-button
-    //   disabled gate already blocks pools without an active slot, so
-    //   pickPromptSlot here returns a valid slot. Relative weights are
-    //   normalized implicitly during selection. The picked index is
-    //   pushed into the store so the panel can highlight that row.
+    //   disabled gate blocks pools without an active slot, while this
+    //   defensive check also catches a pool changed during iterative mode.
+    //   Relative weights are normalized implicitly during selection. The
+    //   picked index is pushed into the store so the panel can highlight it.
     //   Per-slot auto enhancement runs first: "send" uses the enhanced text
     //   for this request, while "evolve" also writes it back into the slot.
     //   Vision then uses that resulting text as its image instruction and
     //   returns the final generation prompt without further LLM processing.
-    let prompt = "";
     const pickedPrompt = pickPromptSlot(state.pinnedPrompts);
-    if (pickedPrompt) {
-      const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
-      const visionEnabled = promptSlotVisionEnabled(slot);
-      const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
-      prompt = replaceAllPlaceholders(pickedPrompt.text);
-      useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
-      prompt = await resolvePromptTransforms(
-        prompt,
-        visionEnabled,
-        (text) =>
-          maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
-        (text) =>
-          maybeDescribeVisionPrompt(
-            ctx,
-            state,
-            useCOM,
-            text,
-            pickedPrompt.index,
-            signal,
-          ),
-        autoEnhanceMode === "off"
-          ? undefined
-          : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
-      );
-      syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
-    } else {
+    if (!pickedPrompt) {
       useStore.getState().set("lastPickedPromptIndex", null);
+      throw new Error(
+        "Enter text in an unmuted prompt slot with a weight above 0.",
+      );
     }
+    const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
+    const visionEnabled = promptSlotVisionEnabled(slot);
+    const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
+    let prompt = replaceAllPlaceholders(pickedPrompt.text);
+    useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
+    prompt = await resolvePromptTransforms(
+      prompt,
+      visionEnabled,
+      (text) => maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
+      (text) =>
+        maybeDescribeVisionPrompt(
+          ctx,
+          state,
+          useCOM,
+          text,
+          pickedPrompt.index,
+          signal,
+        ),
+      autoEnhanceMode === "off"
+        ? undefined
+        : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
+    );
+    syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
 
     // 3. Build input image.
     const inputBlob = await buildInput(ctx, state, workflowType, useCOM);
@@ -209,10 +212,9 @@ export async function generateOnce(
       myEpoch,
     );
 
-    // 6b. VLM mode: the vision model drives tracking. Now that the freshly
-    //     generated frame is on the canvas, ask the VLM for the single most
-    //     salient point and store it. `VLMTracker` renders it and
-    //     `buildInput` reads it for COM. No-op in every other tracking mode.
+    // 6b. VLM mode: ask for the next point after applying the result. Frame
+    //     scope stores a local COM; Canvas scope centers Pull on the returned
+    //     composite coordinate and makes that crop the next working frame.
     await maybeUpdateVlmPoint(response.objectURL, signal, myEpoch);
 
     // 7. Auto-cadenced side effects: download then clear. The counter
@@ -368,11 +370,10 @@ async function maybeDescribeVisionPrompt(
 const VLM_POINT_ATTEMPTS = 3;
 
 /**
- * VLM-mode per-generation step. When the active tracker is VLM and tracking
- * is on, send the just-generated frame to the vision model, parse the single
- * salient point, and store it (normalized). `VLMTracker` renders it and
- * `buildInput` reads it for COM (only observable when the COM toggle is on;
- * VLM mode does not force it). No-op in every other mode.
+ * VLM-mode per-generation step. Frame scope sends the generated frame and
+ * stores the returned point as local COM. Canvas scope sends an overview of
+ * the complete composite, maps the returned point back to composite pixels,
+ * and Pulls a 1024px frame centered there for the next generation.
  *
  * Writing to the store rather than the heatmap directly is deliberate: the
  * tracker re-emits the stored point every tick, so it survives the heatmap
@@ -399,14 +400,33 @@ async function maybeUpdateVlmPoint(
     throw new Error("Select a Vision model under Advanced.");
   }
 
-  // The frame the VLM looks at is the one just applied to the canvas.
+  const scope = live.vlmScope;
+  const canvas = scope === "canvas" ? compositeStore.getCanvas() : null;
+  const canvasSize = canvas
+    ? { width: canvas.width, height: canvas.height }
+    : null;
+
+  // Frame scope reads the generated patch. Canvas scope reads an opaque,
+  // downscaled overview with the same aspect ratio as the live composite.
   let frame: Blob;
   try {
-    const resp = await fetch(outputURL, { signal });
-    frame = await resp.blob();
+    if (scope === "canvas") {
+      if (!canvas) {
+        throw new Error("VLM canvas tracking requires an active composite.");
+      }
+      frame = await captureVisionCanvas({ source: canvas });
+    } else {
+      const resp = await fetch(outputURL, { signal });
+      frame = await resp.blob();
+    }
   } catch (err) {
     if (isAbortError(err)) throw err;
-    throw new Error("VLM tracking could not read the generated frame.");
+    if (err instanceof Error && err.message.startsWith("VLM canvas tracking")) {
+      throw err;
+    }
+    throw new Error(
+      `VLM tracking could not read the ${scope} image.`,
+    );
   }
 
   const provider = new OllamaVLMProvider(live.vlmModel);
@@ -441,10 +461,32 @@ async function maybeUpdateVlmPoint(
     throw new DOMException("Generation aborted before VLM point", "AbortError");
   }
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
+  if (useStore.getState().vlmScope !== scope) return;
 
-  // Store the normalized point. The tracker renders it (surviving heatmap
-  // clears/rebuilds) and buildInput reads it for the next crop's COM.
-  useStore.getState().set("vlmPoint", { x: point.x, y: point.y });
+  if (scope === "canvas" && canvasSize) {
+    const pullPosition = pullPositionForCanvasPoint(point, canvasSize);
+    await pullHandle.triggerAt(pullPosition);
+    // The selected canvas point is now the center of the local pulled frame.
+    useStore.getState().set("vlmPoint", { x: 0.5, y: 0.5 });
+    return;
+  }
+
+  // Frame scope keeps the returned normalized point as the next local COM.
+  useStore.getState().set("vlmPoint", point);
+}
+
+export function pullPositionForCanvasPoint(
+  point: VLMPoint,
+  canvasSize: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: Math.round(clamp01(point.x) * canvasSize.width - PULL_PATCH_SIZE / 2),
+    y: Math.round(clamp01(point.y) * canvasSize.height - PULL_PATCH_SIZE / 2),
+  };
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
 function isAbortError(err: unknown): boolean {
@@ -573,16 +615,17 @@ async function buildInput(
     // single source of truth the tracker also renders) rather than gazeCOM,
     // so COM never lags a heatmap clear/re-emit cycle.
     const pos = state.baseImgPosition;
-    const nextSize = { width: pos.width, height: pos.height };
-    const firstPatch = state.firstPatchPosition ?? pos;
-    const bounds = deriveCompositeBounds(
-      {
-        enabled: state.compositeMode && state.boundsEnabled,
-        width: state.boundsWidth,
-        height: state.boundsHeight,
-      },
-      firstPatch,
-      nextSize,
+    const sourceCanvas = compositeStore.getCanvas();
+    const maxSize = deriveCompositeMaxSize({
+      enabled: state.compositeMode && state.boundsEnabled,
+      width: state.boundsWidth,
+      height: state.boundsHeight,
+    });
+    const comBounds = deriveCOMBounds(
+      maxSize,
+      sourceCanvas
+        ? { width: sourceCanvas.width, height: sourceCanvas.height }
+        : { width: pos.width, height: pos.height },
     );
     const rawCOM = resolveInputCOM({
       trackingMode: state.trackingMode,
@@ -590,13 +633,12 @@ async function buildInput(
       heatmapData: heatmap.getData(),
       containerSize: containerSize(),
     });
-    const com = clampCOMToBounds(rawCOM, bounds, pos, nextSize);
+    const com = clampCOMToBounds(rawCOM, comBounds, pos);
     useStore.getState().set("baseCOM", com);
 
     const centerX = pos.x + com.x * pos.width;
     const centerY = pos.y + com.y * pos.height;
 
-    const sourceCanvas = compositeStore.getCanvas();
     let cropBlob = sourceCanvas
       ? await cropAroundCanvasPoint({
           source: sourceCanvas,
@@ -709,9 +751,7 @@ async function applyResult(
   const prevCanvas = compositeStore.getCanvas();
   if (!prevCanvas) {
     // First-ever generation with empty canvas — seed from the new patch
-    // and record its position as the canvas-bounds anchor (initial value;
-    // every subsequent compositeShift translates this point so the bounds
-    // box stays glued to where the user actually started).
+    // and record its position so Reset pos can return to that location.
     await compositeStore.setFromImageURL(newImageURL);
     const seedBox = {
       x: 0,
@@ -729,31 +769,21 @@ async function applyResult(
     return;
   }
 
-  // Lazy-init the bounds anchor: the pipeline's empty-canvas branch sets
-  // `firstPatchPosition` only when generation runs into a literally empty
-  // composite store. When the user seeds the canvas via a reference-image
-  // selection (ControlPanel.tsx:144) or any other pre-population route,
-  // we'd otherwise reach here with `firstPatchPosition === null` and
-  // `deriveBounds` would silently no-op. Treating the current
-  // `baseImgPosition` as the anchor at the moment of the first growth
-  // covers every seed path uniformly without coupling each seed callsite
-  // to the bounds concept.
+  // Lazy-init the first-patch marker for seed paths that pre-populate the
+  // composite before generation. It is retained solely for Reset pos.
   const firstPatch = state.firstPatchPosition ?? state.baseImgPosition;
   const nextSize = { width: newImg.naturalWidth, height: newImg.naturalHeight };
-  const bounds = deriveCompositeBounds(
-    {
-      enabled: state.boundsEnabled,
-      width: state.boundsWidth,
-      height: state.boundsHeight,
-    },
-    firstPatch,
-    nextSize,
-  );
-  // buildInput already clamps against the expected patch size so the crop and
-  // placement share an anchor. Clamp once more with the actual output size to
-  // keep unusual workflows from placing a differently-sized result outside.
+  const prevSize = { width: prevCanvas.width, height: prevCanvas.height };
+  const maxSize = deriveCompositeMaxSize({
+    enabled: state.boundsEnabled,
+    width: state.boundsWidth,
+    height: state.boundsHeight,
+  });
+  const comBounds = deriveCOMBounds(maxSize, prevSize);
+  // Re-clamp the live COM in case the cap changed during generation. This
+  // constrains only the anchor point; planComposite clips patch overflow.
   const placementCOM = useCOM
-    ? clampCOMToBounds(state.baseCOM, bounds, state.baseImgPosition, nextSize)
+    ? clampCOMToBounds(state.baseCOM, comBounds, state.baseImgPosition)
     : state.baseCOM;
   if (
     placementCOM.x !== state.baseCOM.x ||
@@ -762,13 +792,13 @@ async function applyResult(
     useStore.getState().set("baseCOM", placementCOM);
   }
   const plan = planComposite({
-    prevSize: { width: prevCanvas.width, height: prevCanvas.height },
+    prevSize,
     prevPosition: state.baseImgPosition,
     newSize: nextSize,
     newCOM: placementCOM,
     workflow: workflowType,
     useCOM,
-    bounds,
+    maxSize,
   });
   const newCanvas = applyPlan(plan, prevCanvas, newImg);
   await compositeStore.setCanvas(newCanvas);
@@ -796,11 +826,8 @@ async function applyResult(
   if (state.feedbackMode) {
     patch.baseImageURL = newImageURL;
   }
-  // The firstPatchPosition (bounds anchor) gets translated by every
-  // coordinate-frame shift — same trick PullTool's bbox does, but committed
-  // through the store since this is application state, not a local ref.
-  // We also commit the lazy-init value here when applicable, so the
-  // next iteration sees it set rather than re-deriving every time.
+  // Keep Reset pos's first-patch marker aligned across coordinate shifts.
+  // We also commit the lazy-init value here when applicable.
   const wasLazyInit = state.firstPatchPosition === null;
   if (
     wasLazyInit ||
