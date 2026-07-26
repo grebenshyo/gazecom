@@ -56,6 +56,11 @@ current tasks.
 
 ## Packaging
 
+- **Complete release provenance metadata.** When `v0.3.0` is published, add
+  its actual release date to `CITATION.cff`. Archive the tagged GitHub release
+  through Zenodo, which stores a permanent snapshot and assigns it a DOI
+  (Digital Object Identifier), then add that DOI to `CITATION.cff` so the
+  exact release remains permanently identifiable and citable.
 - Cold-start first-launch path (fresh mDNS/ws) only validated by reasoning +
   the retry/error-wrap; confirm on a genuinely fresh machine.
 - Code signing / notarization to avoid the Gatekeeper "Open" step.
