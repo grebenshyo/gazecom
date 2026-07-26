@@ -174,8 +174,10 @@ function HelpPanel({
               <strong>VLM Guide</strong> reads the complete canvas and chooses
               the next Pull location. <strong>Rotate</strong> pairs it with the
               normal weighted prompt rotation. Its optional{" "}
-              <strong>Pool context</strong> toggle lets Guide consider the
-              active prompts and normalized probabilities without choosing one.{" "}
+              <strong>Pool context</strong> toggle adds an editable{" "}
+              <code>{"{prompt_pool}"}</code> block to the Guide prompt. It
+              expands to the active prompts and normalized probabilities
+              without letting Guide choose one.{" "}
               <strong>Select</strong> asks the VLM to choose one unmuted prompt
               slot together with the coordinate. Its editable Select prompt must contain{" "}
               <code>{"{prompt_pool}"}</code>, which expands visibly into the
@@ -187,6 +189,12 @@ function HelpPanel({
               whether to select one pool prompt without rewriting it or write its
               own complete prompt, which may adapt or combine ideas from the pool.
               Compose and Hybrid-written prompts appear under Next action.
+            </li>
+            <li>
+              Guide <strong>Visual memory</strong> compares one previous canvas
+              with the current canvas. Its toggle adds a visible explanation to
+              every editable Guide prompt, while the retained image history
+              remains fixed at one previous canvas.
             </li>
           </ul>
           <p>

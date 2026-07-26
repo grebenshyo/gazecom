@@ -108,12 +108,14 @@ export class OllamaVLMProvider {
     image: Blob,
     prompt: string,
     history: VLMComposeDecision[],
+    previousImage: Blob | null,
     signal?: AbortSignal,
   ): Promise<VLMComposeDecision | null> {
     return composeDecisionFromImageRequest(
       {
         image,
         imageName: "vision_canvas.png",
+        previousImage: previousImage ?? undefined,
         prompt,
         model: this.model,
         history,
@@ -128,12 +130,14 @@ export class OllamaVLMProvider {
     image: Blob,
     prompt: string,
     history: VLMGuideDecision[],
+    previousImage: Blob | null,
     signal?: AbortSignal,
   ): Promise<VLMGuideDecision | null> {
     return guideDecisionFromImageRequest(
       {
         image,
         imageName: "vision_canvas.png",
+        previousImage: previousImage ?? undefined,
         prompt,
         model: this.model,
         history,
@@ -149,12 +153,14 @@ export class OllamaVLMProvider {
     prompt: string,
     promptIds: number[],
     history: VLMSelectHistoryItem[],
+    previousImage: Blob | null,
     signal?: AbortSignal,
   ): Promise<VLMSelectDecision | null> {
     return selectDecisionFromImageRequest(
       {
         image,
         imageName: "vision_canvas.png",
+        previousImage: previousImage ?? undefined,
         prompt,
         model: this.model,
         history,
@@ -171,12 +177,14 @@ export class OllamaVLMProvider {
     prompt: string,
     promptIds: number[],
     history: VLMHybridHistoryItem[],
+    previousImage: Blob | null,
     signal?: AbortSignal,
   ): Promise<VLMHybridDecision | null> {
     return hybridDecisionFromImageRequest(
       {
         image,
         imageName: "vision_canvas.png",
+        previousImage: previousImage ?? undefined,
         prompt,
         model: this.model,
         history,

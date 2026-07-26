@@ -5,6 +5,14 @@ current tasks.
 
 ## VLM Mode
 
+- **Reduce Guide visual-memory overhead asymmetrically.** Guide currently
+  compares two canvases capped at 1024px by `captureVisionCanvas`; it does not
+  send the full native workspace dimensions. Test retaining the current canvas
+  at 1024px while reducing only the previous comparison canvas to 512px. This
+  would lower each two-image request from roughly 2.1M to 1.31M source pixels
+  while preserving current-canvas detail and normalized coordinate placement.
+  Prefer this fixed, bounded optimization before adding another UI control.
+
 - **Revisit task-specific vision reasoning controls.** Prompt-slot vision and
   VLM tracking currently share the Vision model's thinking-effort setting.
   If VLM Point or another use case makes the distinction useful, split it into

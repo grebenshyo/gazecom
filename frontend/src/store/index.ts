@@ -100,6 +100,50 @@ export const DEFAULT_VLM_GUIDE_PROMPT =
   "{canvas_limit} Return only strict JSON using a 0-1000 coordinate grid: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
 
+export const VLM_ROTATE_POOL_CONTEXT_BLOCK =
+  "The following active weighted prompts collectively shape the image. " +
+  "You do not choose a prompt; another process selects one after you choose " +
+  "the coordinate. Use this pool only as context for deciding which area is " +
+  "most relevant to work on next.\n\nPrompt pool:\n{prompt_pool}";
+
+export const VLM_GUIDE_VISUAL_MEMORY_BLOCK =
+  "When two canvas images are attached, the first is the previous canvas " +
+  "before the last applied action and the second is the current canvas after " +
+  "it. Compare them to understand what changed, and use the current canvas " +
+  "for the next decision.";
+
+function togglePromptBlock(
+  prompt: string,
+  block: string,
+  enabled: boolean,
+): string {
+  if (enabled) {
+    if (prompt.includes(block)) return prompt;
+    return `${block}\n\n${prompt}`.trim();
+  }
+
+  const index = prompt.indexOf(block);
+  if (index < 0) return prompt;
+  return `${prompt.slice(0, index)}\n\n${prompt.slice(index + block.length)}`
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function toggleVlmRotatePoolContextPrompt(
+  prompt: string,
+  enabled: boolean,
+): string {
+  if (enabled && prompt.includes("{prompt_pool}")) return prompt;
+  return togglePromptBlock(prompt, VLM_ROTATE_POOL_CONTEXT_BLOCK, enabled);
+}
+
+export function toggleVlmGuideVisualMemoryPrompt(
+  prompt: string,
+  enabled: boolean,
+): string {
+  return togglePromptBlock(prompt, VLM_GUIDE_VISUAL_MEMORY_BLOCK, enabled);
+}
+
 export const DEFAULT_VLM_SELECT_PROMPT =
   "Guide the next step of an image composition. Inspect the complete current " +
   "canvas and the available prompt candidates below.\n\n" +
@@ -203,6 +247,10 @@ export interface AppState {
   vlmGuidePromptChoice: VLMGuidePromptChoice;
   /** Let Rotate use the active weighted prompt pool as placement context. */
   vlmRotatePoolContext: boolean;
+  /** Send the previous canvas beside the current canvas in Guide requests. */
+  vlmGuideVisualMemory: boolean;
+  /** Canvas seen by the preceding successful Guide decision. Transient. */
+  vlmGuidePreviousCanvas: Blob | null;
   /** Pending Guide decision used by the next generation only. Transient. */
   vlmGuideAction: VLMCanvasAction | null;
   /** Successfully applied Guide decisions for the current composition. */
@@ -483,6 +531,7 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.vlmBehavior,
     StorageKeys.vlmGuidePromptChoice,
     StorageKeys.vlmRotatePoolContext,
+    StorageKeys.vlmGuideVisualMemory,
     StorageKeys.vlmGuideHistoryLimit,
     StorageKeys.vlmScope,
     StorageKeys.vlmPointPrompt,
@@ -559,6 +608,60 @@ function loadInitial(): AppState {
     storedGuidePromptChoice === "hybrid"
       ? storedGuidePromptChoice
       : "rotate";
+  const vlmRotatePoolContext = readJSON<boolean>(
+    StorageKeys.vlmRotatePoolContext,
+    false,
+  );
+  const vlmGuideVisualMemory = readJSON<boolean>(
+    StorageKeys.vlmGuideVisualMemory,
+    false,
+  );
+  const storedGuidePrompts = {
+    vlmGuidePrompt: readJSON<string>(
+      StorageKeys.vlmGuidePrompt,
+      DEFAULT_VLM_GUIDE_PROMPT,
+    ),
+    vlmSelectPrompt: readJSON<string>(
+      StorageKeys.vlmSelectPrompt,
+      DEFAULT_VLM_SELECT_PROMPT,
+    ),
+    vlmComposePrompt: readJSON<string>(
+      StorageKeys.vlmComposePrompt,
+      DEFAULT_VLM_COMPOSE_PROMPT,
+    ),
+    vlmHybridPrompt: readJSON<string>(
+      StorageKeys.vlmHybridPrompt,
+      DEFAULT_VLM_HYBRID_PROMPT,
+    ),
+  };
+  const guidePrompts = {
+    vlmGuidePrompt: toggleVlmGuideVisualMemoryPrompt(
+      toggleVlmRotatePoolContextPrompt(
+        storedGuidePrompts.vlmGuidePrompt,
+        vlmRotatePoolContext,
+      ),
+      vlmGuideVisualMemory,
+    ),
+    vlmSelectPrompt: toggleVlmGuideVisualMemoryPrompt(
+      storedGuidePrompts.vlmSelectPrompt,
+      vlmGuideVisualMemory,
+    ),
+    vlmComposePrompt: toggleVlmGuideVisualMemoryPrompt(
+      storedGuidePrompts.vlmComposePrompt,
+      vlmGuideVisualMemory,
+    ),
+    vlmHybridPrompt: toggleVlmGuideVisualMemoryPrompt(
+      storedGuidePrompts.vlmHybridPrompt,
+      vlmGuideVisualMemory,
+    ),
+  };
+  for (const key of Object.keys(guidePrompts) as Array<
+    keyof typeof guidePrompts
+  >) {
+    if (guidePrompts[key] !== storedGuidePrompts[key]) {
+      writeJSON(StorageKeys[key], guidePrompts[key]);
+    }
+  }
   return {
     trackingMode,
     trackingProfiles,
@@ -567,10 +670,9 @@ function loadInitial(): AppState {
     vlmPoint: null,
     vlmBehavior,
     vlmGuidePromptChoice,
-    vlmRotatePoolContext: readJSON<boolean>(
-      StorageKeys.vlmRotatePoolContext,
-      false,
-    ),
+    vlmRotatePoolContext,
+    vlmGuideVisualMemory,
+    vlmGuidePreviousCanvas: null,
     vlmGuideAction: null,
     vlmGuideHistory: [],
     vlmGuideHistoryLimit: loadVlmGuideHistoryLimit(),
@@ -655,22 +757,7 @@ function loadInitial(): AppState {
       StorageKeys.vlmPointPrompt,
       DEFAULT_VLM_POINT_PROMPT,
     ),
-    vlmGuidePrompt: readJSON<string>(
-      StorageKeys.vlmGuidePrompt,
-      DEFAULT_VLM_GUIDE_PROMPT,
-    ),
-    vlmSelectPrompt: readJSON<string>(
-      StorageKeys.vlmSelectPrompt,
-      DEFAULT_VLM_SELECT_PROMPT,
-    ),
-    vlmComposePrompt: readJSON<string>(
-      StorageKeys.vlmComposePrompt,
-      DEFAULT_VLM_COMPOSE_PROMPT,
-    ),
-    vlmHybridPrompt: readJSON<string>(
-      StorageKeys.vlmHybridPrompt,
-      DEFAULT_VLM_HYBRID_PROMPT,
-    ),
+    ...guidePrompts,
     vlmPointPromptHeight: readJSON<number>(
       StorageKeys.vlmPointPromptHeight,
       60,
@@ -835,6 +922,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmBehavior", StorageKeys.vlmBehavior],
   ["vlmGuidePromptChoice", StorageKeys.vlmGuidePromptChoice],
   ["vlmRotatePoolContext", StorageKeys.vlmRotatePoolContext],
+  ["vlmGuideVisualMemory", StorageKeys.vlmGuideVisualMemory],
   ["vlmGuideHistoryLimit", StorageKeys.vlmGuideHistoryLimit],
   ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
@@ -873,6 +961,7 @@ export const useStore = create<AppState & AppActions>()(
           trackingMode: mode,
           ...state.trackingProfiles[mode],
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
@@ -891,6 +980,7 @@ export const useStore = create<AppState & AppActions>()(
         set({
           vlmBehavior: value as VLMBehavior,
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
@@ -901,6 +991,7 @@ export const useStore = create<AppState & AppActions>()(
         set({
           vlmGuidePromptChoice: value as VLMGuidePromptChoice,
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
@@ -908,13 +999,45 @@ export const useStore = create<AppState & AppActions>()(
         return;
       }
       if (key === "vlmRotatePoolContext") {
-        set({
+        set((state) => ({
           vlmRotatePoolContext: value as boolean,
+          vlmGuidePrompt: toggleVlmRotatePoolContextPrompt(
+            state.vlmGuidePrompt,
+            value as boolean,
+          ),
+          vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
+        }));
+        return;
+      }
+      if (key === "vlmGuideVisualMemory") {
+        set((state) => ({
+          vlmGuideVisualMemory: value as boolean,
+          vlmGuidePrompt: toggleVlmGuideVisualMemoryPrompt(
+            state.vlmGuidePrompt,
+            value as boolean,
+          ),
+          vlmSelectPrompt: toggleVlmGuideVisualMemoryPrompt(
+            state.vlmSelectPrompt,
+            value as boolean,
+          ),
+          vlmComposePrompt: toggleVlmGuideVisualMemoryPrompt(
+            state.vlmComposePrompt,
+            value as boolean,
+          ),
+          vlmHybridPrompt: toggleVlmGuideVisualMemoryPrompt(
+            state.vlmHybridPrompt,
+            value as boolean,
+          ),
+          vlmGuidePreviousCanvas: null,
           vlmPoint: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
-        });
+        }));
         return;
       }
       if (key === "vlmGuideHistoryLimit") {
@@ -924,6 +1047,7 @@ export const useStore = create<AppState & AppActions>()(
             Math.max(0, Math.floor(value as number)),
           ),
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
         });
@@ -947,6 +1071,7 @@ export const useStore = create<AppState & AppActions>()(
         set({
           [key]: value,
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
@@ -980,6 +1105,7 @@ export const useStore = create<AppState & AppActions>()(
         isComposited: false,
         generationInProgress: false,
         vlmPoint: null,
+        vlmGuidePreviousCanvas: null,
         vlmGuideAction: null,
         vlmGuideHistory: [],
         vlmGuideWorkspaceReady: false,
@@ -1024,6 +1150,7 @@ export const useStore = create<AppState & AppActions>()(
               vlmBehavior: defaults.vlmBehavior,
               vlmGuidePromptChoice: defaults.vlmGuidePromptChoice,
               vlmRotatePoolContext: defaults.vlmRotatePoolContext,
+              vlmGuideVisualMemory: defaults.vlmGuideVisualMemory,
               vlmGuideHistoryLimit: defaults.vlmGuideHistoryLimit,
               vlmScope: defaults.vlmScope,
               vlmPointPrompt: defaults.vlmPointPrompt,
@@ -1035,6 +1162,7 @@ export const useStore = create<AppState & AppActions>()(
               vlmGuideActionHeight: defaults.vlmGuideActionHeight,
               trackingActive: false,
               vlmPoint: null,
+              vlmGuidePreviousCanvas: null,
               vlmGuideAction: null,
               vlmGuideHistory: [],
               vlmGuideWorkspaceReady: false,
@@ -1077,6 +1205,7 @@ export const useStore = create<AppState & AppActions>()(
             vlmThinkingMode: defaults.vlmThinkingMode,
             calibCache: defaults.calibCache,
             vlmPoint: null,
+            vlmGuidePreviousCanvas: null,
             vlmGuideAction: null,
             vlmGuideHistory: [],
             vlmGuideWorkspaceReady: false,

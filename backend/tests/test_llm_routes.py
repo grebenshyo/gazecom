@@ -639,6 +639,49 @@ def test_llm_guide_decision_uses_coordinate_only_schema(
     assert set(sent["format"]["properties"]) == {"x", "y"}
 
 
+def test_llm_guide_decision_sends_bounded_visual_memory(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={"message": {"content": '{"x":200,"y":800}'}},
+    )
+
+    prompt = (
+        "The first image is the previous canvas and the second is current. "
+        "Choose the next coordinate."
+    )
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "gemma4:latest",
+            "prompt": prompt,
+            "behavior": "guide",
+        },
+        files={
+            "previous_image": ("previous.png", b"previous-canvas", "image/png"),
+            "image": ("current.png", b"current-canvas", "image/png"),
+        },
+    )
+
+    assert resp.status_code == 200
+    request = httpx_mock.get_request()
+    assert request is not None
+    sent = json.loads(request.read())
+    assert sent["messages"] == [
+        {
+            "role": "user",
+            "content": prompt,
+            "images": [
+                "cHJldmlvdXMtY2FudmFz",
+                "Y3VycmVudC1jYW52YXM=",
+            ],
+        }
+    ]
+
+
 def test_llm_guide_decision_resends_coordinate_history(
     client: TestClient,
     httpx_mock: HTTPXMock,

@@ -536,20 +536,26 @@ def _decision_chat_messages(
         | list[VLMHybridHistoryItem]
     ),
     image_b64: str,
+    previous_image_b64: str | None = None,
     *,
     behavior: Literal["compose", "guide", "select", "hybrid"],
 ) -> list[dict[str, Any]]:
+    images = (
+        [previous_image_b64, image_b64]
+        if previous_image_b64 is not None
+        else [image_b64]
+    )
     if not history:
         return [
             {
                 "role": "user",
                 "content": instruction,
-                "images": [image_b64],
+                "images": images,
             }
         ]
 
-    # Keep previous images out of the context: the text decisions establish
-    # continuity while only the latest canvas consumes vision tokens.
+    # Text carries long-term continuity. Visual memory is deliberately bounded
+    # to one previous canvas plus the current canvas.
     messages: list[dict[str, Any]] = [{"role": "user", "content": instruction}]
     for action in history:
         action_payload: dict[str, float | str] = {
@@ -586,7 +592,7 @@ def _decision_chat_messages(
         {
             "role": "user",
             "content": instruction,
-            "images": [image_b64],
+            "images": images,
         }
     )
     return messages
@@ -881,6 +887,7 @@ async def point(
 )
 async def decision(
     image: UploadFile = File(...),
+    previous_image: UploadFile | None = File(default=None),
     model: str = Form(min_length=1),
     prompt: str = Form(min_length=1),
     history: str = Form(default="[]"),
@@ -897,6 +904,12 @@ async def decision(
         raise HTTPException(400, "Image is empty.")
 
     image_b64 = b64encode(image_bytes).decode("ascii")
+    previous_image_b64: str | None = None
+    if previous_image is not None:
+        previous_image_bytes = await previous_image.read()
+        if not previous_image_bytes:
+            raise HTTPException(400, "Previous image is empty.")
+        previous_image_b64 = b64encode(previous_image_bytes).decode("ascii")
     model_name = model.strip()
     parsed_history: (
         list[VLMComposeHistoryItem]
@@ -959,6 +972,7 @@ async def decision(
         instruction,
         parsed_history,
         image_b64,
+        previous_image_b64,
         behavior=behavior,
     )
     chat_payload: dict[str, Any] = {
@@ -972,7 +986,11 @@ async def decision(
     generate_payload: dict[str, Any] = {
         "model": model_name,
         "prompt": _flatten_chat_messages(messages),
-        "images": [image_b64],
+        "images": (
+            [previous_image_b64, image_b64]
+            if previous_image_b64 is not None
+            else [image_b64]
+        ),
         "format": output_schema,
         "stream": False,
         "keep_alive": keep_alive,

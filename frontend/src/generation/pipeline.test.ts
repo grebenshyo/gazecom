@@ -124,9 +124,10 @@ describe("renderRotatePrompt", () => {
     ]);
   });
 
-  it("appends contextual prompts without turning them into choices", () => {
+  it("expands the visible pool placeholder without adding hidden instructions", () => {
     const prompt = renderRotatePrompt(
-      "Choose coordinates for a {crop_size} crop.",
+      "Use these only as placement context:\n{prompt_pool}\n\n" +
+        "Choose coordinates for a {crop_size} crop.",
       slots,
       true,
       { width: 2048, height: 2048 },
@@ -134,7 +135,7 @@ describe("renderRotatePrompt", () => {
     );
 
     expect(prompt).toContain("Choose coordinates for a 1024 crop.");
-    expect(prompt).toContain("You do not choose a prompt");
+    expect(prompt).toContain("Use these only as placement context:");
     expect(prompt).toContain('"probability": 0.25');
     expect(prompt).toContain('"prompt": "red structure"');
     expect(prompt).toContain('"probability": 0.75');
@@ -142,9 +143,21 @@ describe("renderRotatePrompt", () => {
     expect(prompt).not.toContain("muted detail");
     expect(prompt).not.toContain("zero influence");
     expect(prompt).not.toContain('"id"');
-    expect(prompt.indexOf("Prompt pool:")).toBeLessThan(
+    expect(prompt.indexOf('"probability": 0.25')).toBeLessThan(
       prompt.indexOf("Choose coordinates"),
     );
+  });
+
+  it("rejects hidden Rotate context without a visible placeholder", () => {
+    expect(() =>
+      renderRotatePrompt(
+        "Choose coordinates for a {crop_size} crop.",
+        slots,
+        true,
+        { width: 2048, height: 2048 },
+        { enabled: true, width: 2048, height: 2048 },
+      ),
+    ).toThrow('requires the "{prompt_pool}" placeholder');
   });
 
   it("leaves the normal Guide prompt unchanged when context is disabled", () => {
@@ -157,6 +170,18 @@ describe("renderRotatePrompt", () => {
         { enabled: true, width: 2048, height: 2048 },
       ),
     ).toBe("Choose coordinates for a 1024 crop.");
+  });
+
+  it("renders an empty visible pool when substitution is disabled", () => {
+    expect(
+      renderRotatePrompt(
+        "Context: {prompt_pool}\nChoose coordinates.",
+        slots,
+        false,
+        { width: 2048, height: 2048 },
+        { enabled: true, width: 2048, height: 2048 },
+      ),
+    ).toBe("Context: []\nChoose coordinates.");
   });
 });
 

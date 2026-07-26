@@ -74,6 +74,7 @@ export interface VLMPointRequest {
 export interface VLMComposeDecisionRequest {
   image: Blob;
   imageName: string;
+  previousImage?: Blob;
   prompt: string;
   model: string;
   history: VLMComposeDecision[];
@@ -84,6 +85,7 @@ export interface VLMComposeDecisionRequest {
 export interface VLMGuideDecisionRequest {
   image: Blob;
   imageName: string;
+  previousImage?: Blob;
   prompt: string;
   model: string;
   history: VLMGuideDecision[];
@@ -94,6 +96,7 @@ export interface VLMGuideDecisionRequest {
 export interface VLMSelectDecisionRequest {
   image: Blob;
   imageName: string;
+  previousImage?: Blob;
   prompt: string;
   model: string;
   history: VLMSelectHistoryItem[];
@@ -105,6 +108,7 @@ export interface VLMSelectDecisionRequest {
 export interface VLMHybridDecisionRequest {
   image: Blob;
   imageName: string;
+  previousImage?: Blob;
   prompt: string;
   model: string;
   history: VLMHybridHistoryItem[];
@@ -431,6 +435,9 @@ async function canvasDecisionFromImageRequest<
 ): Promise<T | null> {
   const fd = new FormData();
   fd.append("image", req.image, req.imageName);
+  if (req.previousImage) {
+    fd.append("previous_image", req.previousImage, "previous_canvas.png");
+  }
   fd.append("prompt", req.prompt);
   fd.append("model", req.model);
   fd.append("history", JSON.stringify(req.history));

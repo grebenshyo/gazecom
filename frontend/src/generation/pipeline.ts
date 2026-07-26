@@ -548,7 +548,8 @@ async function ensureCanvasAction(
   const behavior = useStore.getState().vlmBehavior;
   if (behavior === "point") return false;
   const guidePromptChoice = useStore.getState().vlmGuidePromptChoice;
-  const action = await requestGuideDecision(canvas, guidePromptChoice, signal);
+  const result = await requestGuideDecision(canvas, guidePromptChoice, signal);
+  const action = result.action;
   if (signal?.aborted) {
     throw new DOMException(
       "Generation aborted before VLM canvas decision",
@@ -579,6 +580,7 @@ async function ensureCanvasAction(
       width: canvas.width,
       height: canvas.height,
     },
+    result.observedCanvas,
   );
   return true;
 }
@@ -727,17 +729,19 @@ export function renderRotatePrompt(
   bounds: { enabled: boolean; width: number; height: number },
 ): string {
   const prompt = renderGuidePrompt(template, canvasSize, bounds);
-  if (!includePoolContext) return prompt;
+  if (!includePoolContext) {
+    return prompt.replaceAll("{prompt_pool}", "[]");
+  }
+  if (!prompt.includes("{prompt_pool}")) {
+    throw new Error(
+      'Rotate pool context requires the "{prompt_pool}" placeholder.',
+    );
+  }
 
   const context = JSON.stringify(buildRotatePromptContext(slots), null, 2);
-  return (
-    "The following active weighted prompts collectively shape the image. " +
-    "You do not choose a prompt; another process selects one after you choose " +
-    "the coordinate. Use this pool only as context for deciding which area is " +
-    "most relevant to work on next.\n\nPrompt pool:\n" +
-    context +
-    "\n\n" +
-    prompt
+  return prompt.replaceAll(
+    "{prompt_pool}",
+    context,
   );
 }
 
@@ -800,7 +804,7 @@ async function requestGuideDecision(
   canvas: HTMLCanvasElement,
   choice: VLMGuidePromptChoice,
   signal?: AbortSignal,
-): Promise<VLMCanvasAction> {
+): Promise<{ action: VLMCanvasAction; observedCanvas: Blob }> {
   const live = useStore.getState();
   if (!live.vlmModel.trim()) {
     throw new Error("Select a Vision model under Advanced.");
@@ -843,6 +847,9 @@ async function requestGuideDecision(
         ? renderPromptPoolTemplate(template, candidates, canvasSize, bounds)
         : renderGuidePrompt(template, canvasSize, bounds);
   const frame = await captureVisionCanvas({ source: canvas });
+  const previousFrame = live.vlmGuideVisualMemory
+    ? live.vlmGuidePreviousCanvas
+    : null;
   const provider = new OllamaVLMProvider(
     live.vlmModel,
     ollamaThinkFor(live.vlmModel, live.vlmThinkingMode),
@@ -869,13 +876,17 @@ async function requestGuideDecision(
               y,
               instruction,
             })),
+          previousFrame,
           signal,
         );
         if (decision) {
           return {
-            x: decision.x,
-            y: decision.y,
-            instruction: decision.instruction.trim(),
+            action: {
+              x: decision.x,
+              y: decision.y,
+              instruction: decision.instruction.trim(),
+            },
+            observedCanvas: frame,
           };
         }
       } else if (choice === "select") {
@@ -891,6 +902,7 @@ async function requestGuideDecision(
               prompt_id: action.promptId,
               prompt: action.appliedPromptText ?? action.promptText,
             })),
+          previousFrame,
           signal,
         );
         if (decision) {
@@ -903,13 +915,16 @@ async function requestGuideDecision(
             );
           }
           return {
-            x: decision.x,
-            y: decision.y,
-            promptId: candidate.id,
-            promptSlotIndex: candidate.slotIndex,
-            promptSourceText: candidate.sourceText,
-            promptSlotSignature: candidate.slotSignature,
-            promptText: candidate.prompt,
+            action: {
+              x: decision.x,
+              y: decision.y,
+              promptId: candidate.id,
+              promptSlotIndex: candidate.slotIndex,
+              promptSourceText: candidate.sourceText,
+              promptSlotSignature: candidate.slotSignature,
+              promptText: candidate.prompt,
+            },
+            observedCanvas: frame,
           };
         }
       } else if (choice === "hybrid") {
@@ -932,15 +947,19 @@ async function requestGuideDecision(
                   ? action.appliedPromptText ?? action.promptText
                   : action.instruction,
             })),
+          previousFrame,
           signal,
         );
         if (decision?.source === "write") {
           return {
-            x: decision.x,
-            y: decision.y,
-            hybridSource: "write",
-            promptId: 0,
-            instruction: decision.instruction.trim(),
+            action: {
+              x: decision.x,
+              y: decision.y,
+              hybridSource: "write",
+              promptId: 0,
+              instruction: decision.instruction.trim(),
+            },
+            observedCanvas: frame,
           };
         }
         if (decision?.source === "pool") {
@@ -953,14 +972,17 @@ async function requestGuideDecision(
             );
           }
           return {
-            x: decision.x,
-            y: decision.y,
-            hybridSource: "pool",
-            promptId: candidate.id,
-            promptSlotIndex: candidate.slotIndex,
-            promptSourceText: candidate.sourceText,
-            promptSlotSignature: candidate.slotSignature,
-            promptText: candidate.prompt,
+            action: {
+              x: decision.x,
+              y: decision.y,
+              hybridSource: "pool",
+              promptId: candidate.id,
+              promptSlotIndex: candidate.slotIndex,
+              promptSourceText: candidate.sourceText,
+              promptSlotSignature: candidate.slotSignature,
+              promptText: candidate.prompt,
+            },
+            observedCanvas: frame,
           };
         }
       } else {
@@ -968,9 +990,15 @@ async function requestGuideDecision(
           frame,
           instruction,
           rawHistory.map(({ x, y }) => ({ x, y })),
+          previousFrame,
           signal,
         );
-        if (decision) return { x: decision.x, y: decision.y };
+        if (decision) {
+          return {
+            action: { x: decision.x, y: decision.y },
+            observedCanvas: frame,
+          };
+        }
       }
     } catch (err) {
       if (isAbortError(err)) throw err;
@@ -1053,6 +1081,7 @@ function pendingActionMatchesState(action: VLMCanvasAction): boolean {
 async function applyGuideDecision(
   action: VLMCanvasAction,
   canvasSize: { width: number; height: number },
+  observedCanvas: Blob,
 ): Promise<void> {
   const normalized = { ...action, x: clamp01(action.x), y: clamp01(action.y) };
   if ("instruction" in normalized && !normalized.instruction.trim()) {
@@ -1063,6 +1092,9 @@ async function applyGuideDecision(
   );
   useStore.getState().patch({
     vlmGuideAction: normalized,
+    vlmGuidePreviousCanvas: useStore.getState().vlmGuideVisualMemory
+      ? observedCanvas
+      : null,
     // Pull centers the selected canvas coordinate in the local generation frame.
     vlmPoint: { x: 0.5, y: 0.5 },
   });
@@ -1106,11 +1138,12 @@ async function maybeUpdateVlmTracking(
       throw new Error("VLM Guide requires an active composite.");
     }
     const canvasSize = { width: canvas.width, height: canvas.height };
-    let nextAction = await requestGuideDecision(
+    let result = await requestGuideDecision(
       canvas,
       guidePromptChoice,
       signal,
     );
+    let nextAction = result.action;
     if (signal?.aborted) {
       throw new DOMException(
         "Generation aborted before VLM canvas decision",
@@ -1128,11 +1161,12 @@ async function maybeUpdateVlmTracking(
       return;
     }
     if (!pendingActionMatchesState(nextAction)) {
-      nextAction = await requestGuideDecision(
+      result = await requestGuideDecision(
         canvas,
         guidePromptChoice,
         signal,
       );
+      nextAction = result.action;
       if (signal?.aborted) {
         throw new DOMException(
           "Generation aborted before refreshed VLM canvas decision",
@@ -1155,7 +1189,7 @@ async function maybeUpdateVlmTracking(
         );
       }
     }
-    await applyGuideDecision(nextAction, canvasSize);
+    await applyGuideDecision(nextAction, canvasSize, result.observedCanvas);
     return;
   }
 

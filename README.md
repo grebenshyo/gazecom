@@ -169,8 +169,9 @@ Pull on the returned coordinate. **Guide** always evaluates the complete canvas
 and returns the next Pull coordinate, with four choices for the generation text:
 
 - **Rotate** pairs the coordinate with the normal weighted prompt rotation. Its
-  optional **Pool context** toggle lets Guide consider the active prompts and
-  normalized probabilities while still returning coordinates only.
+  optional **Pool context** toggle adds a visible, editable `{prompt_pool}`
+  block to the Guide prompt. The placeholder expands to the active prompts and
+  normalized probabilities while Guide still returns coordinates only.
 - **Select** presents every unmuted slot through the editable Select prompt's
   `{prompt_pool}` placeholder and requires a valid prompt ID with the coordinate.
 - **Compose** returns both the coordinate and a newly authored generation
@@ -178,6 +179,13 @@ and returns the next Pull coordinate, with four choices for the generation text:
 - **Hybrid** either selects one pool prompt without rewriting it or writes a
   complete prompt. Its editable instruction explicitly allows new writing to
   adapt, combine, or expand pool concepts when that better suits the canvas.
+
+Guide's optional **Visual memory** toggle keeps exactly one previous canvas and
+sends it before the current canvas on the next decision. Enabling it adds a
+visible, editable explanation to every Guide prompt; no visual-history
+instruction is hidden in the backend. Text history remains independently
+bounded by **History**, while image memory never accumulates beyond two canvases
+per request.
 
 Selected pool slots still follow their normal direct, enhancement, evolution, or
 vision path. With canvas limits enabled, Guide prepares the complete bounded

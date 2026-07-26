@@ -511,6 +511,7 @@ export function ControlPanel({
           baseCOM: { x: 0.5, y: 0.5 },
           isComposited: false,
           vlmPoint: null,
+          vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
           vlmGuideWorkspaceReady: false,
@@ -770,14 +771,21 @@ export function ControlPanel({
               </>
             )}
             {s.vlmBehavior !== "point" && (
-              <NumberInput
-                label="History"
-                value={s.vlmGuideHistoryLimit}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(v) => s.set("vlmGuideHistoryLimit", v)}
-              />
+              <>
+                <NumberInput
+                  label="History"
+                  value={s.vlmGuideHistoryLimit}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={(v) => s.set("vlmGuideHistoryLimit", v)}
+                />
+                <Toggle
+                  label="Visual memory"
+                  checked={s.vlmGuideVisualMemory}
+                  onChange={(v) => s.set("vlmGuideVisualMemory", v)}
+                />
+              </>
             )}
             {s.vlmBehavior === "point" && (
               <Dropdown<VLMScope>
@@ -809,7 +817,9 @@ export function ControlPanel({
                 }}
               />
               {s.vlmBehavior === "guide" &&
-                (s.vlmGuidePromptChoice === "select" ||
+                ((s.vlmGuidePromptChoice === "rotate" &&
+                  s.vlmRotatePoolContext) ||
+                  s.vlmGuidePromptChoice === "select" ||
                   s.vlmGuidePromptChoice === "hybrid") &&
                 !vlmPromptConfig.value.includes("{prompt_pool}") && (
                   <p className="gz-pool-warning">

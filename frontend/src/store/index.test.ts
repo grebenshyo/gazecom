@@ -87,7 +87,11 @@ describe("useStore — actions", () => {
   });
 
   it("starts a new Guide conversation when Rotate pool context changes", async () => {
-    const { useStore } = await import("./index");
+    const {
+      DEFAULT_VLM_GUIDE_PROMPT,
+      VLM_ROTATE_POOL_CONTEXT_BLOCK,
+      useStore,
+    } = await import("./index");
     useStore.getState().patch({
       vlmGuideAction: { x: 0.4, y: 0.6 },
       vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
@@ -98,17 +102,103 @@ describe("useStore — actions", () => {
 
     expect(useStore.getState()).toMatchObject({
       vlmRotatePoolContext: true,
+      vlmGuidePrompt:
+        `${VLM_ROTATE_POOL_CONTEXT_BLOCK}\n\n${DEFAULT_VLM_GUIDE_PROMPT}`,
       vlmGuideAction: null,
       vlmGuideHistory: [],
       vlmGuideWorkspaceReady: false,
     });
+
+    useStore.getState().set("vlmRotatePoolContext", false);
+
+    expect(useStore.getState()).toMatchObject({
+      vlmRotatePoolContext: false,
+      vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
+    });
+  });
+
+  it("exposes visual-memory instructions in every Guide prompt", async () => {
+    const {
+      DEFAULT_VLM_COMPOSE_PROMPT,
+      DEFAULT_VLM_GUIDE_PROMPT,
+      DEFAULT_VLM_HYBRID_PROMPT,
+      DEFAULT_VLM_SELECT_PROMPT,
+      VLM_GUIDE_VISUAL_MEMORY_BLOCK,
+      useStore,
+    } = await import("./index");
+    const previous = new Blob(["previous"], { type: "image/png" });
+    useStore.getState().patch({
+      vlmGuidePreviousCanvas: previous,
+      vlmGuideAction: { x: 0.4, y: 0.6 },
+      vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
+      vlmGuideWorkspaceReady: true,
+    });
+
+    useStore.getState().set("vlmGuideVisualMemory", true);
+
+    expect(useStore.getState()).toMatchObject({
+      vlmGuideVisualMemory: true,
+      vlmGuidePreviousCanvas: null,
+      vlmGuideAction: null,
+      vlmGuideHistory: [],
+      vlmGuideWorkspaceReady: false,
+      vlmGuidePrompt:
+        `${VLM_GUIDE_VISUAL_MEMORY_BLOCK}\n\n${DEFAULT_VLM_GUIDE_PROMPT}`,
+      vlmSelectPrompt:
+        `${VLM_GUIDE_VISUAL_MEMORY_BLOCK}\n\n${DEFAULT_VLM_SELECT_PROMPT}`,
+      vlmComposePrompt:
+        `${VLM_GUIDE_VISUAL_MEMORY_BLOCK}\n\n${DEFAULT_VLM_COMPOSE_PROMPT}`,
+      vlmHybridPrompt:
+        `${VLM_GUIDE_VISUAL_MEMORY_BLOCK}\n\n${DEFAULT_VLM_HYBRID_PROMPT}`,
+    });
+
+    useStore.getState().set("vlmGuideVisualMemory", false);
+
+    expect(useStore.getState()).toMatchObject({
+      vlmGuideVisualMemory: false,
+      vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
+      vlmSelectPrompt: DEFAULT_VLM_SELECT_PROMPT,
+      vlmComposePrompt: DEFAULT_VLM_COMPOSE_PROMPT,
+      vlmHybridPrompt: DEFAULT_VLM_HYBRID_PROMPT,
+    });
+  });
+
+  it("removes Rotate and visual-memory prompt blocks independently", async () => {
+    const {
+      DEFAULT_VLM_GUIDE_PROMPT,
+      VLM_GUIDE_VISUAL_MEMORY_BLOCK,
+      VLM_ROTATE_POOL_CONTEXT_BLOCK,
+      useStore,
+    } = await import("./index");
+
+    useStore.getState().set("vlmRotatePoolContext", true);
+    useStore.getState().set("vlmGuideVisualMemory", true);
+    expect(useStore.getState().vlmGuidePrompt).toContain(
+      VLM_ROTATE_POOL_CONTEXT_BLOCK,
+    );
+    expect(useStore.getState().vlmGuidePrompt).toContain(
+      VLM_GUIDE_VISUAL_MEMORY_BLOCK,
+    );
+
+    useStore.getState().set("vlmRotatePoolContext", false);
+    expect(useStore.getState().vlmGuidePrompt).not.toContain(
+      VLM_ROTATE_POOL_CONTEXT_BLOCK,
+    );
+    expect(useStore.getState().vlmGuidePrompt).toContain(
+      VLM_GUIDE_VISUAL_MEMORY_BLOCK,
+    );
+
+    useStore.getState().set("vlmGuideVisualMemory", false);
+    expect(useStore.getState().vlmGuidePrompt).toBe(DEFAULT_VLM_GUIDE_PROMPT);
   });
 
   it("keeps Guide history when tracking pauses, but drops the pending action", async () => {
     const { useStore } = await import("./index");
     const history = [{ x: 0.5, y: 0.5 }];
+    const previous = new Blob(["previous"], { type: "image/png" });
     useStore.getState().patch({
       trackingActive: true,
+      vlmGuidePreviousCanvas: previous,
       vlmGuideAction: { x: 0.7, y: 0.2 },
       vlmGuideHistory: history,
     });
@@ -117,6 +207,7 @@ describe("useStore — actions", () => {
 
     expect(useStore.getState().vlmGuideAction).toBeNull();
     expect(useStore.getState().vlmGuideHistory).toEqual(history);
+    expect(useStore.getState().vlmGuidePreviousCanvas).toBe(previous);
   });
 
   it("clears Guide history when its retained-action limit changes", async () => {
@@ -197,6 +288,7 @@ describe("useStore — actions", () => {
       vlmBehavior: "guide",
       vlmGuidePromptChoice: "hybrid",
       vlmRotatePoolContext: true,
+      vlmGuideVisualMemory: true,
       vlmScope: "canvas",
       vlmPointPrompt: "custom point prompt",
       vlmGuidePrompt: "custom guide prompt",
@@ -223,6 +315,8 @@ describe("useStore — actions", () => {
       vlmBehavior: "point",
       vlmGuidePromptChoice: "rotate",
       vlmRotatePoolContext: false,
+      vlmGuideVisualMemory: false,
+      vlmGuidePreviousCanvas: null,
       vlmScope: "frame",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
       vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
@@ -456,7 +550,7 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.matteColor, '"#123abc"');
     localStorage.setItem(StorageKeys.uiScale, "72");
     localStorage.setItem(StorageKeys.cropBoxBorderWidth, "7");
-    const { useStore } = await import("./index");
+    const { VLM_ROTATE_POOL_CONTEXT_BLOCK, useStore } = await import("./index");
     expect(useStore.getState().theme).toBe("dark");
     expect(useStore.getState().steps).toBe(30);
     expect(useStore.getState().eventHistoryLength).toBe(900);
@@ -468,7 +562,12 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmRotatePoolContext).toBe(true);
     expect(useStore.getState().vlmGuideHistoryLimit).toBe(8);
     expect(useStore.getState().vlmScope).toBe("canvas");
-    expect(useStore.getState().vlmGuidePrompt).toBe("Choose a location.");
+    expect(useStore.getState().vlmGuidePrompt).toBe(
+      `${VLM_ROTATE_POOL_CONTEXT_BLOCK}\n\nChoose a location.`,
+    );
+    expect(
+      JSON.parse(localStorage.getItem(StorageKeys.vlmGuidePrompt) ?? '""'),
+    ).toBe(`${VLM_ROTATE_POOL_CONTEXT_BLOCK}\n\nChoose a location.`);
     expect(useStore.getState().vlmSelectPrompt).toBe(
       "Choose prompt {prompt_pool}.",
     );

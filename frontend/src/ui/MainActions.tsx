@@ -42,6 +42,8 @@ export function MainActions({
   const trackingMode = useStore((s) => s.trackingMode);
   const vlmBehavior = useStore((s) => s.vlmBehavior);
   const vlmGuidePromptChoice = useStore((s) => s.vlmGuidePromptChoice);
+  const vlmRotatePoolContext = useStore((s) => s.vlmRotatePoolContext);
+  const vlmGuidePrompt = useStore((s) => s.vlmGuidePrompt);
   const vlmSelectPrompt = useStore((s) => s.vlmSelectPrompt);
   const vlmHybridPrompt = useStore((s) => s.vlmHybridPrompt);
   const generationInProgress = useStore((s) => s.generationInProgress);
@@ -74,6 +76,13 @@ export function MainActions({
     trackingMode === "vlm" && vlmBehavior === "guide";
   const canvasVlmReady = !canvasVlmSelected || trackingActive;
   const poolTemplateReady =
+    (!(
+      trackingMode === "vlm" &&
+      vlmBehavior === "guide" &&
+      vlmGuidePromptChoice === "rotate" &&
+      vlmRotatePoolContext
+    ) ||
+      vlmGuidePrompt.includes("{prompt_pool}")) &&
     (!guideSelectsPrompt || vlmSelectPrompt.includes("{prompt_pool}")) &&
     (!guideUsesHybridPrompt || vlmHybridPrompt.includes("{prompt_pool}"));
   const promptPoolValid =
@@ -189,7 +198,13 @@ export function MainActions({
                     ? "Unmute at least one prompt slot for Guide Select"
                     : "Unmute a prompt slot or give one a weight above 0"
                   : !poolTemplateReady
-                    ? `Add {prompt_pool} to the ${guideUsesHybridPrompt ? "Hybrid" : "Select"} prompt`
+                    ? `Add {prompt_pool} to the ${
+                        vlmGuidePromptChoice === "rotate"
+                          ? "Guide"
+                          : guideUsesHybridPrompt
+                            ? "Hybrid"
+                            : "Select"
+                      } prompt`
                   : undefined
         }
       >

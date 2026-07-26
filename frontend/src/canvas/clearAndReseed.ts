@@ -41,6 +41,7 @@ export async function clearAndReseed(
     firstPatchPosition: null,
     isComposited: false,
     vlmPoint: null,
+    vlmGuidePreviousCanvas: null,
     vlmGuideAction: null,
     vlmGuideHistory: [],
     vlmGuideWorkspaceReady: false,

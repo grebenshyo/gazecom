@@ -233,16 +233,27 @@ selected value is sent explicitly with every relevant request.
 VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
 requests a structured canvas decision and moves Pull there. Rotate resolves text
 through the normal weighted prompt pool. Its optional Pool context setting
-appends positive, unmuted prompt sources and normalized probabilities to the
-placement instruction without changing Rotate's coordinate-only response or
-downstream random selection. Select expands `{prompt_pool}` inside its persisted
-editable prompt, asks for a valid candidate ID, and executes that exact prompt
-snapshot through the selected slot's normal transforms. Compose uses a newly
-authored instruction. Hybrid makes one structured request that either selects an
-eligible prompt without rewriting it or writes a complete standalone prompt,
-optionally drawing on concepts exposed in the pool. Select and Hybrid ignore
-weights and use mute as candidate membership; hidden weights remain untouched.
-Hybrid may write even when no candidates are available.
+inserts a visible context block containing `{prompt_pool}` into the persisted
+editable Rotate prompt. At request time that placeholder expands to positive,
+unmuted prompt sources and normalized probabilities; no additional instruction
+is injected. Rotate still returns coordinates only and leaves downstream random
+selection unchanged. Select expands `{prompt_pool}` inside its persisted editable
+prompt, asks for a valid candidate ID, and executes that exact prompt snapshot
+through the selected slot's normal transforms. Compose uses a newly authored
+instruction. Hybrid makes one structured request that either selects an eligible
+prompt without rewriting it or writes a complete standalone prompt, optionally
+drawing on concepts exposed in the pool. Select and Hybrid ignore weights and
+use mute as candidate membership; hidden weights remain untouched. Hybrid may
+write even when no candidates are available.
+
+Guide visual memory is a separate, bounded comparison aid. When enabled, the
+frontend retains the canvas observed by the previous accepted Guide decision
+and submits it before the current canvas on the next `/api/llm/decision`
+request. The user-visible memory clause is inserted into every editable Guide
+prompt when the toggle is enabled and removed when disabled. The backend adds
+no hidden instruction; it only preserves previous/current image ordering.
+Failed, aborted, stale, cleared, or reconfigured decisions do not advance the
+stored image, and only one previous `Blob` is retained.
 
 After compositing the result, the pipeline appends the applied decision to
 bounded transient chat history, then requests and stores the next decision. The
@@ -256,7 +267,7 @@ Bounded mode allocates the configured workspace once and centers existing
 content; unbounded mode sends the current composite so edge Pulls can expand it.
 Pending decisions, history, and workspace readiness are transient, while the
 editable Point, Rotate, Select, Compose, and Hybrid instruction templates and
-Rotate's Pool context setting persist independently.
+Rotate's Pool context and Guide visual-memory settings persist independently.
 
 ## Lineage
 
