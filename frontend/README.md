@@ -14,7 +14,7 @@ pnpm install              # or: npm install / yarn install
 In one terminal:
 
 ```bash
-cd backend && uvicorn gengaze.main:app --reload --port 8000
+cd backend && uvicorn gazecom.main:app --reload --port 8000
 ```
 
 In another:

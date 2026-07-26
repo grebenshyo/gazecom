@@ -17,8 +17,8 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from gengaze.config import Settings, get_settings
-from gengaze.user_config import (
+from gazecom.config import Settings, get_settings
+from gazecom.user_config import (
     resolve_ollama_host,
     resolve_ollama_keep_model_loaded,
 )

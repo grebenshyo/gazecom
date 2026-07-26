@@ -7,7 +7,7 @@ non-string values pass through untouched.
 
 from __future__ import annotations
 
-from gengaze.workflow import substitute_placeholders
+from gazecom.workflow import substitute_placeholders
 
 
 def test_replaces_token_in_string() -> None:

@@ -16,7 +16,7 @@ cp ../.env.example ../.env           # then edit paths for your machine
 ## Run
 
 ```bash
-uvicorn gengaze.main:app --reload --port 8000
+uvicorn gazecom.main:app --reload --port 8000
 # or:
 gazecom-backend
 ```
@@ -32,10 +32,10 @@ ruff check .
 
 ## Layout
 
-- `gengaze/config.py` — `Settings` loaded from `.env` via pydantic-settings
-- `gengaze/workflow.py` — pure helpers (placeholder substitution)
-- `gengaze/main.py` — FastAPI app factory
-- `gengaze/routes/` - runtime configuration, workflow catalog, images,
+- `gazecom/config.py` — `Settings` loaded from `.env` via pydantic-settings
+- `gazecom/workflow.py` — pure helpers (placeholder substitution)
+- `gazecom/main.py` — FastAPI app factory
+- `gazecom/routes/` - runtime configuration, workflow catalog, images,
   generation, and Ollama LLM/VLM endpoints. `/api/llm/models` returns the
   installed Ollama tags; model choice remains a frontend/user decision.
 - `tests/` — pytest
@@ -43,5 +43,5 @@ ruff check .
 ## Status
 
 The backend is the production API and static server used by both source and
-packaged builds. Its historical Python import name remains `gengaze` for
-compatibility; the distribution and command use the gazeCOM name.
+packaged builds. The Python import package and command both use the gazeCOM
+namespace.

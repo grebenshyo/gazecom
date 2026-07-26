@@ -31,14 +31,14 @@ build = [
 ]
 
 [project.scripts]
-gazecom-backend = "gengaze.main:run"
+gazecom-backend = "gazecom.main:run"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["gengaze*"]
+include = ["gazecom*"]
 
 [tool.ruff]
 line-length = 100
@@ -52,15 +52,11 @@ ignore = ["E501"]  # let formatter handle long lines
 # FastAPI uses callables in argument defaults (Depends, File, Form, Body) as
 # its core dependency-injection idiom. B008 flags this, so we silence it
 # for the routes package only.
-"gengaze/routes/*.py" = ["B008"]
+"gazecom/routes/*.py" = ["B008"]
 
 [tool.ruff.lint.isort]
-# The package is `gengaze` (importable name), distinct from the project
-# name `gazecom-backend` used in [project]. Without this hint ruff lumps
-# our own modules into the third-party import group, which (depending on
-# version) collapses the blank-line separator that visually distinguishes
-# our code from external deps.
-known-first-party = ["gengaze"]
+# Keep local package imports separate from third-party dependencies.
+known-first-party = ["gazecom"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from gengaze.config import Settings, get_settings
-from gengaze.launcher import _ensure_workflows_dir
-from gengaze.main import create_app
-from gengaze.user_config import config_dir, config_path
+from gazecom.config import Settings, get_settings
+from gazecom.launcher import _ensure_workflows_dir
+from gazecom.main import create_app
+from gazecom.user_config import config_dir, config_path
 
 
 @pytest.fixture

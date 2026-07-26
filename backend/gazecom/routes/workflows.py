@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from gengaze.config import Settings, get_settings
-from gengaze.workflow_catalog import scan_workflows
+from gazecom.config import Settings, get_settings
+from gazecom.workflow_catalog import scan_workflows
 
 router = APIRouter()
 

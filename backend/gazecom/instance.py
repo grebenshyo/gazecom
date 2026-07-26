@@ -21,7 +21,7 @@ from urllib.request import urlopen
 
 
 def _lock_path() -> Path:
-    from gengaze.user_config import config_dir
+    from gazecom.user_config import config_dir
 
     return config_dir() / "instance.json"
 

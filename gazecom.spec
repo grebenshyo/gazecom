@@ -18,7 +18,7 @@ from PyInstaller.utils.hooks import collect_submodules
 hiddenimports = collect_submodules("uvicorn")
 
 a = Analysis(
-    ["backend/gengaze/launcher.py"],
+    ["backend/gazecom/launcher.py"],
     pathex=["backend"],
     binaries=[],
     datas=[

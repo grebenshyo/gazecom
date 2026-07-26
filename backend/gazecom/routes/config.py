@@ -3,7 +3,7 @@
 Currently the ComfyUI + Ollama hosts plus Ollama keep-loaded behavior, so
 the packaged app can be pointed at local services without editing any file.
 Persisted per-user via
-``gengaze.user_config`` (outside the app bundle).
+``gazecom.user_config`` (outside the app bundle).
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from gengaze.config import Settings, get_settings
-from gengaze.user_config import (
+from gazecom.config import Settings, get_settings
+from gazecom.user_config import (
     clear_config,
     load_config,
     save_config,

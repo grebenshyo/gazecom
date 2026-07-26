@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from gengaze.config import Settings
+    from gazecom.config import Settings
 
 log = logging.getLogger(__name__)
 

@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from gengaze.comfy_client import ComfyClient, ComfyError, pick_image_output_node
-from gengaze.workflow_catalog import scan_workflows
+from gazecom.comfy_client import ComfyClient, ComfyError, pick_image_output_node
+from gazecom.workflow_catalog import scan_workflows
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[2] / "workflows"
 
@@ -132,10 +132,10 @@ async def test_upload_image_returns_stored_name(httpx_mock) -> None:
     httpx_mock.add_response(
         method="POST",
         url="http://host:8188/upload/image",
-        json={"name": "gengaze_input.png", "subfolder": "", "type": "input"},
+        json={"name": "gazecom_input.png", "subfolder": "", "type": "input"},
     )
-    name = await ComfyClient("host:8188").upload_image(b"\x89PNG", "gengaze_input.png")
-    assert name == "gengaze_input.png"
+    name = await ComfyClient("host:8188").upload_image(b"\x89PNG", "gazecom_input.png")
+    assert name == "gazecom_input.png"
 
 
 async def test_upload_image_prefixes_subfolder(httpx_mock) -> None:

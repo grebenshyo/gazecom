@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pytest_httpx import HTTPXMock
 
-from gengaze.config import Settings, get_settings
-from gengaze.main import create_app
+from gazecom.config import Settings, get_settings
+from gazecom.main import create_app
 
 
 @pytest.fixture

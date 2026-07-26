@@ -7,7 +7,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from gengaze.comfy_client import pick_image_output_node
+from gazecom.comfy_client import pick_image_output_node
 
 WORKFLOW_CATEGORIES = ("img", "edit", "inpainting")
 WORKFLOW_TYPES = {

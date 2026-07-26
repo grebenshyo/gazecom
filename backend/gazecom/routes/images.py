@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from gengaze.config import Settings, get_settings
+from gazecom.config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/gengaze/config.py → backend/gengaze → backend → project root
+# backend/gazecom/config.py → backend/gazecom → backend → project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 

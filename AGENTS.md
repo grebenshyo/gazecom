@@ -33,17 +33,17 @@ images/       reference images (served at /images/*)
 
 ### Backend modules
 
-- `gengaze/config.py` — pydantic-settings loaded from `.env`. **No
+- `gazecom/config.py` — pydantic-settings loaded from `.env`. **No
   hardcoded paths.**
-- `gengaze/comfy_client.py` — `ComfyClient.run_for_image` opens a websocket
+- `gazecom/comfy_client.py` — `ComfyClient.run_for_image` opens a websocket
   to ComfyUI and listens for the `executed` event. **Do not reintroduce
   filesystem polling.**
-- `gengaze/workflow_catalog.py` — scans bundled + user workflow roots,
+- `gazecom/workflow_catalog.py` — scans bundled + user workflow roots,
   validates the three category contracts, and applies user overrides.
-- `gengaze/workflow.py` — pure `substitute_placeholders` (unit-tested).
-- `gengaze/routes/` — one file per resource; routers mounted in
+- `gazecom/workflow.py` — pure `substitute_placeholders` (unit-tested).
+- `gazecom/routes/` — one file per resource; routers mounted in
   `main.create_app`. FastAPI route modules have `B008` ruff exemption.
-- `gengaze/main.py` — app factory with CORS + static `/images` mount.
+- `gazecom/main.py` — app factory with CORS + static `/images` mount.
   Auto-mounts `frontend/dist/` in production.
 
 ### Frontend modules

@@ -22,11 +22,11 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
-from gengaze.comfy_client import ComfyClient, ComfyError, ComfyExecutionError
-from gengaze.config import Settings, get_settings
-from gengaze.user_config import resolve_comfy_host
-from gengaze.workflow import substitute_placeholders
-from gengaze.workflow_catalog import resolve_workflow_path
+from gazecom.comfy_client import ComfyClient, ComfyError, ComfyExecutionError
+from gazecom.config import Settings, get_settings
+from gazecom.user_config import resolve_comfy_host
+from gazecom.workflow import substitute_placeholders
+from gazecom.workflow_catalog import resolve_workflow_path
 
 log = logging.getLogger(__name__)
 

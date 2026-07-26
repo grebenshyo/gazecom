@@ -6,7 +6,7 @@ directory. This points ``Settings`` at those locations via environment
 variables — set *before* importing the app so config reads them — picks a free
 port, starts uvicorn, and opens the browser once the server is accepting.
 
-Also runnable in dev: ``python -m gengaze.launcher`` (resolves resources
+Also runnable in dev: ``python -m gazecom.launcher`` (resolves resources
 from the repo checkout instead of a bundle).
 """
 
@@ -27,7 +27,7 @@ def _bundle_dir() -> Path:
     """Root of bundled read-only resources.
 
     Frozen: PyInstaller's extraction/bundle dir (``sys._MEIPASS``). Dev:
-    the repo root (backend/gengaze/launcher.py → three parents up).
+    the repo root (backend/gazecom/launcher.py → three parents up).
     """
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
@@ -36,7 +36,7 @@ def _bundle_dir() -> Path:
 
 def _ensure_images_dir() -> Path:
     """Writable per-user images dir, seeded from bundled defaults once."""
-    from gengaze.user_config import config_dir  # no Settings import → safe
+    from gazecom.user_config import config_dir  # no Settings import → safe
 
     dst = config_dir() / "images"
     dst.mkdir(parents=True, exist_ok=True)
@@ -50,7 +50,7 @@ def _ensure_images_dir() -> Path:
 
 def _ensure_workflows_dir() -> Path:
     """Writable workflow root for user-added templates in packaged builds."""
-    from gengaze.user_config import config_dir  # no Settings import -> safe
+    from gazecom.user_config import config_dir  # no Settings import -> safe
 
     dst = config_dir() / "workflows"
     for category in ("img", "edit", "inpainting"):
@@ -83,7 +83,7 @@ def _open_when_ready(url: str, port: int, timeout: float = 15.0) -> None:
 
 
 def main() -> None:
-    from gengaze.instance import (
+    from gazecom.instance import (
         probe_alive,
         read_lock,
         remove_lock,
@@ -101,7 +101,7 @@ def main() -> None:
     existing = read_lock()
     if existing and probe_alive(int(existing.get("port") or 0)):
         url = f"http://127.0.0.1:{existing['port']}"
-        if not os.environ.get("GENGAZE_NO_BROWSER"):
+        if not os.environ.get("GAZECOM_NO_BROWSER"):
             webbrowser.open(url)
         print(f"gazeCOM already running at {url}")
         return
@@ -121,11 +121,11 @@ def main() -> None:
 
     import uvicorn
 
-    from gengaze.main import app
+    from gazecom.main import app
 
     url = f"http://127.0.0.1:{port}"
-    # GENGAZE_NO_BROWSER=1 skips auto-opening the browser (headless/testing).
-    if not os.environ.get("GENGAZE_NO_BROWSER"):
+    # GAZECOM_NO_BROWSER=1 skips auto-opening the browser (headless/testing).
+    if not os.environ.get("GAZECOM_NO_BROWSER"):
         threading.Thread(
             target=_open_when_ready, args=(url, port), daemon=True
         ).start()

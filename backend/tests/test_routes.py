@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from gengaze.config import Settings, get_settings
-from gengaze.main import create_app
-from gengaze.workflow_catalog import resolve_workflow_path
+from gazecom.config import Settings, get_settings
+from gazecom.main import create_app
+from gazecom.workflow_catalog import resolve_workflow_path
 
 
 @pytest.fixture
@@ -73,11 +73,11 @@ def test_generate_accepts_empty_prompt(
         return b"generated"
 
     monkeypatch.setattr(
-        "gengaze.routes.generate.ComfyClient.upload_image",
+        "gazecom.routes.generate.ComfyClient.upload_image",
         fake_upload_image,
     )
     monkeypatch.setattr(
-        "gengaze.routes.generate.ComfyClient.run_for_image",
+        "gazecom.routes.generate.ComfyClient.run_for_image",
         fake_run_for_image,
     )
 

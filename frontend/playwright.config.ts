@@ -9,7 +9,7 @@ import { defineConfig, devices } from "@playwright/test";
  * server running.
  *
  * For a full integration test against a real ComfyUI you'd run:
- *   cd backend && uvicorn gengaze.main:app --port 8000 &
+ *   cd backend && uvicorn gazecom.main:app --port 8000 &
  *   cd frontend && pnpm dev &
  *   pnpm test:e2e
  * (and remove the route mocks below).

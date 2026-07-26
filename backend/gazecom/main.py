@@ -14,13 +14,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from gengaze import __version__
-from gengaze.config import Settings, get_settings
-from gengaze.routes import config as config_route
-from gengaze.routes import generate as generate_route
-from gengaze.routes import images as images_route
-from gengaze.routes import llm as llm_route
-from gengaze.routes import workflows as workflows_route
+from gazecom import __version__
+from gazecom.config import Settings, get_settings
+from gazecom.routes import config as config_route
+from gazecom.routes import generate as generate_route
+from gazecom.routes import images as images_route
+from gazecom.routes import llm as llm_route
+from gazecom.routes import workflows as workflows_route
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -80,7 +80,7 @@ app = create_app()
 def run() -> None:
     settings = get_settings()
     uvicorn.run(
-        "gengaze.main:app",
+        "gazecom.main:app",
         host=settings.host,
         port=settings.port,
         log_level="warning",

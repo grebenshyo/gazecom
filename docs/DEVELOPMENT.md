@@ -35,7 +35,7 @@ of it ships.
 files (`frontend/dist`) once. The PyInstaller app freezes only the **backend**;
 at launch, uvicorn serves the built SPA at `/`, the API at `/api/*`, and images
 at `/images/*` — all from one process on one port (see
-[`main.py`](../backend/gengaze/main.py): the `if frontend_dist.is_dir()` mount).
+[`main.py`](../backend/gazecom/main.py): the `if frontend_dist.is_dir()` mount).
 No Vite, no proxy, no Node.
 
 The frontend code is identical across both — it always calls relative `/api/…`.
@@ -66,10 +66,10 @@ on first run and installs the `build` extra (PyInstaller). PyInstaller
 **cannot cross-compile** — a Windows build must run on Windows, a macOS build
 on macOS. The release CI does exactly this on both runners (see below).
 
-## Backend (`backend/gengaze/`)
+## Backend (`backend/gazecom/`)
 
-The import package keeps its historical `gengaze` name for compatibility;
-the product, distribution package, and command-line entry point use gazeCOM.
+The import package, distribution package, and command-line entry point all use
+the gazeCOM namespace.
 
 - `main.py` — FastAPI app factory; mounts routers, `/images`, and (in
   production) `frontend/dist`.
@@ -142,7 +142,7 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-uvicorn gengaze.main:app --reload --port 8000
+uvicorn gazecom.main:app --reload --port 8000
 ```
 ```bash
 # Terminal 2 — frontend
@@ -157,7 +157,7 @@ Open <http://localhost:5173>. Vite proxies `/api/*` and `/images/*` to `:8000`.
 
 ```bash
 cd frontend && pnpm build            # writes dist/
-cd ../backend && uvicorn gengaze.main:app --host 127.0.0.1 --port 8000
+cd ../backend && uvicorn gazecom.main:app --host 127.0.0.1 --port 8000
 ```
 
 The backend then serves the SPA at `/` and the API at `/api/*` from one
@@ -166,10 +166,10 @@ process — the same shape as the frozen app, minus the launcher.
 ## Testing
 
 ```bash
-cd backend && pytest && ruff check .   # 68 tests
+cd backend && pytest && ruff check .
 ```
 ```bash
-cd frontend && pnpm typecheck && pnpm test   # 176 vitest tests
+cd frontend && pnpm typecheck && pnpm test
 pnpm test:e2e                                # Playwright smoke (npx playwright install once)
 ```
 
