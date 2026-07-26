@@ -7,7 +7,7 @@
  *
  * Pipeline:
  *   1. Resolve workflow (random-weighted or current selection).
- *   2. Resolve the prompt text selected by the weighted prompt pool.
+ *   2. Resolve prompt text through Guide Rotate, Select, Compose, or Hybrid.
  *   3. Build input image:
  *      - in-/outpainting w/ COM: crop + alpha mask
  *      - in-/outpainting w/o COM: base image + alpha mask
@@ -36,26 +36,34 @@ import { downloadComposite } from "../canvas/downloadComposite";
 import { gazeCOM } from "../canvas/Heatmap";
 import {
   pickPromptSlot,
+  promptSlotMuted,
   promptSlotAutoEnhanceMode,
   promptSlotVisionEnabled,
   replaceAllPlaceholders,
+  selectablePromptSlots,
   setPromptSlotDerivedText,
   setPromptSlotText,
+  type PromptSlots,
 } from "../prompts";
 import {
   useStore,
   type OllamaThinkingMode,
   type TrackingMode,
-  type VLMBehavior,
   type VLMCanvasAction,
   type VLMAgentAction,
+  type VLMGuidePromptChoice,
+  type VLMHybridSelectAction,
+  type VLMHybridWriteAction,
+  type VLMSelectAction,
 } from "../store";
 import {
   generateRequest,
   type OllamaThink,
-  type VLMAgentDecision,
+  type VLMComposeDecision,
   type VLMGuideDecision,
+  type VLMHybridHistoryItem,
   type VLMPoint,
+  type VLMSelectHistoryItem,
 } from "./api";
 import {
   captureBasePatch,
@@ -98,17 +106,21 @@ export async function generateOnce(
   const state = useStore.getState();
   if (state.generationInProgress) return;
   const canvasVlmSelected =
-    state.trackingMode === "vlm" && state.vlmBehavior !== "point";
+    state.trackingMode === "vlm" && state.vlmBehavior === "guide";
   const canvasVlmActive =
     canvasVlmSelected && state.trackingActive;
-  const agentActive =
+  const composeActive =
     state.trackingMode === "vlm" &&
-    state.vlmBehavior === "agent" &&
+    state.vlmBehavior === "guide" &&
+    state.vlmGuidePromptChoice === "compose" &&
+    state.trackingActive;
+  const selectActive =
+    state.trackingMode === "vlm" &&
+    state.vlmBehavior === "guide" &&
+    state.vlmGuidePromptChoice === "select" &&
     state.trackingActive;
   if (canvasVlmSelected && !state.trackingActive) {
-    throw new Error(
-      `Start VLM ${state.vlmBehavior === "agent" ? "Agent" : "Guide"} tracking before generating.`,
-    );
+    throw new Error("Start VLM Guide tracking before generating.");
   }
   if (
     state.trackingMode === "vlm" &&
@@ -133,8 +145,8 @@ export async function generateOnce(
   // The COM toggle is authoritative for every workflow. Edit and
   // in-/outpainting do not force COM implicitly; the flag alone decides.
   // This keeps placement and crop selection uniform across workflow types.
-  // Guide and Agent are deliberate exceptions: their chosen coordinates are
-  // the COM input and their output must be composited for the next decision.
+  // Guide is a deliberate exception: its chosen coordinates are the COM input
+  // and its output must be composited for the next decision.
   const useCOM = state.comMode || canvasVlmActive;
 
   // Capture the epoch at the start of this generation. If Pull or Clear
@@ -157,18 +169,19 @@ export async function generateOnce(
 
   try {
     // 2. Resolve canvas guidance, then the generation prompt.
-    //   Guide behavior chooses the next Pull location from the complete canvas,
-    //   but generation text remains under the normal weighted prompt pool.
+    //   Guide chooses the next Pull location from the complete canvas. Rotate
+    //   uses the weighted pool, Select carries an exact pool choice, Compose
+    //   writes the prompt, and Hybrid chooses between the latter two.
     //   Resolve the location first so the prompt is selected from fresh state
     //   after the potentially slow VLM request.
     if (canvasVlmActive) {
-      const ready = await ensureAgentAction(signal, myEpoch);
+      const ready = await ensureCanvasAction(signal, myEpoch);
       if (!ready) return;
     }
 
     //   Pick a slot from the rotation pool, run its text through
     //   `replaceAllPlaceholders`, and use it. The Generate-button
-    //   disabled gate blocks pools without a positive, unmuted slot, while this
+    //   disabled gate blocks pools without an eligible slot, while this
     //   defensive check also catches a pool changed during iterative mode.
     //   Relative weights are normalized implicitly during selection. The
     //   picked index is pushed into the store so the panel can highlight it.
@@ -177,26 +190,65 @@ export async function generateOnce(
     //   Vision then uses that resulting text as its image instruction and
     //   returns the final generation prompt without further LLM processing.
     let prompt: string;
-    if (agentActive) {
+    const promptChoice = useStore.getState().vlmGuidePromptChoice;
+    const pendingAction = canvasVlmActive
+      ? useStore.getState().vlmAgentAction
+      : null;
+    const authoredAction =
+      pendingAction && isAuthoredAction(pendingAction)
+        ? pendingAction
+        : null;
+    const usesAuthoredPrompt =
+      composeActive ||
+      (promptChoice === "hybrid" &&
+        authoredAction !== null &&
+        isHybridAction(authoredAction) &&
+        authoredAction.hybridSource === "write");
+    if (usesAuthoredPrompt) {
       useStore.getState().set("lastPickedPromptIndex", null);
-      const action = useStore.getState().vlmAgentAction;
-      if (!action || !("instruction" in action) || !action.instruction.trim()) {
-        throw new Error("VLM Agent did not provide an edit instruction.");
+      if (!authoredAction?.instruction.trim()) {
+        throw new Error("VLM Compose did not provide an edit instruction.");
       }
-      prompt = action.instruction.trim();
+      prompt = authoredAction.instruction.trim();
     } else {
       const promptState = useStore.getState();
-      const pickedPrompt = pickPromptSlot(promptState.pinnedPrompts);
+      const selectedAction =
+        selectActive ||
+        (promptChoice === "hybrid" &&
+          pendingAction !== null &&
+          isHybridAction(pendingAction) &&
+          pendingAction.hybridSource === "pool")
+          ? promptState.vlmAgentAction
+          : null;
+      const selectedByVlm =
+        selectedAction !== null && isSelectAction(selectedAction);
+      const pickedPrompt = selectedByVlm
+        ? selectedAction && isSelectAction(selectedAction)
+          ? {
+              text: selectedAction.promptText,
+              index: selectedAction.promptSlotIndex,
+            }
+          : null
+        : pickPromptSlot(promptState.pinnedPrompts);
       if (!pickedPrompt) {
         useStore.getState().set("lastPickedPromptIndex", null);
         throw new Error(
-          "Unmute a prompt slot or give one a weight above 0.",
+          promptChoice === "select"
+            ? "Unmute at least one prompt slot for Guide Select."
+            : promptChoice === "hybrid"
+              ? "VLM Hybrid did not return a usable prompt."
+              : "Unmute a prompt slot or give one a weight above 0.",
         );
       }
       const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
       const visionEnabled = promptSlotVisionEnabled(slot);
       const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
-      prompt = replaceAllPlaceholders(pickedPrompt.text);
+      // Select candidates are placeholder-resolved before the VLM evaluates
+      // them, so generation must use that exact snapshot. Rotate resolves only
+      // the slot it picked, preserving its existing behavior.
+      prompt = selectedByVlm
+        ? pickedPrompt.text
+        : replaceAllPlaceholders(pickedPrompt.text);
       useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
       prompt = await resolvePromptTransforms(
         prompt,
@@ -216,10 +268,19 @@ export async function generateOnce(
           : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
       );
       syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
+      if (selectedByVlm) {
+        const pending = useStore.getState().vlmAgentAction;
+        if (pending && isSelectAction(pending)) {
+          useStore.getState().set("vlmAgentAction", {
+            ...pending,
+            appliedPromptText: prompt,
+          });
+        }
+      }
     }
 
     // 3. Build input image.
-    // Agent bootstrap may have created a bounded workspace and moved Pull,
+    // Guide bootstrap may have created a bounded workspace and moved Pull,
     // so its image geometry must be read after that asynchronous decision.
     const generationState = useStore.getState();
     const inputBlob = await buildInput(
@@ -259,7 +320,7 @@ export async function generateOnce(
     // abort (genuine cancel, throws AbortError, halts iterative loop).
     // `myEpoch` covers Pull/Clear discard (no abort, no halt, just drop
     // this one result so the user's focus-shift action takes priority).
-    const completedAgentAction = canvasVlmActive
+    const completedCanvasAction = canvasVlmActive
       ? useStore.getState().vlmAgentAction
       : null;
     const applied = await applyResult(
@@ -271,12 +332,12 @@ export async function generateOnce(
       myEpoch,
     );
     if (!applied) return;
-    if (completedAgentAction) {
+    if (completedCanvasAction) {
       const live = useStore.getState();
       const history =
         live.vlmAgentHistoryLimit === 0
           ? []
-          : [...live.vlmAgentHistory, completedAgentAction].slice(
+          : [...live.vlmAgentHistory, completedCanvasAction].slice(
               -live.vlmAgentHistoryLimit,
             );
       live.patch({
@@ -449,8 +510,8 @@ async function maybeDescribeVisionPrompt(
  * into a clean point.
  */
 const VLM_POINT_ATTEMPTS = 3;
-const VLM_AGENT_ATTEMPTS = 3;
-const MAX_AGENT_WORKSPACE_PIXELS = 4096 * 4096;
+const VLM_GUIDE_ATTEMPTS = 3;
+const MAX_GUIDE_WORKSPACE_PIXELS = 4096 * 4096;
 
 function ollamaThinkFor(
   model: string,
@@ -463,12 +524,15 @@ function ollamaThinkFor(
   return mode;
 }
 
-async function ensureAgentAction(
+async function ensureCanvasAction(
   signal?: AbortSignal,
   myEpoch?: number,
+  staleRetry = 0,
 ): Promise<boolean> {
-  if (useStore.getState().vlmAgentAction) return true;
-  await prepareAgentWorkspace();
+  const pending = useStore.getState().vlmAgentAction;
+  if (pending && pendingActionMatchesState(pending)) return true;
+  if (pending) useStore.getState().set("vlmAgentAction", null);
+  await prepareGuideWorkspace();
   if (signal?.aborted) {
     throw new DOMException(
       "Generation aborted before VLM canvas decision",
@@ -479,11 +543,12 @@ async function ensureAgentAction(
 
   const canvas = compositeStore.getCanvas();
   if (!canvas) {
-    throw new Error("VLM Guide/Agent requires an active canvas.");
+    throw new Error("VLM Guide requires an active canvas.");
   }
   const behavior = useStore.getState().vlmBehavior;
   if (behavior === "point") return false;
-  const decision = await requestAgentDecision(canvas, behavior, signal);
+  const guidePromptChoice = useStore.getState().vlmGuidePromptChoice;
+  const action = await requestGuideDecision(canvas, guidePromptChoice, signal);
   if (signal?.aborted) {
     throw new DOMException(
       "Generation aborted before VLM canvas decision",
@@ -494,14 +559,22 @@ async function ensureAgentAction(
   const live = useStore.getState();
   if (
     live.trackingMode !== "vlm" ||
-    live.vlmBehavior !== behavior ||
+    live.vlmBehavior !== "guide" ||
+    live.vlmGuidePromptChoice !== guidePromptChoice ||
     !live.trackingActive
   ) {
     return false;
   }
-  await applyAgentDecision(
-    decision,
-    behavior,
+  if (!pendingActionMatchesState(action)) {
+    if (staleRetry >= 1) {
+      throw new Error(
+        "Guide prompt pool changed repeatedly during its decision.",
+      );
+    }
+    return ensureCanvasAction(signal, myEpoch, staleRetry + 1);
+  }
+  await applyGuideDecision(
+    action,
     {
       width: canvas.width,
       height: canvas.height,
@@ -510,7 +583,7 @@ async function ensureAgentAction(
   return true;
 }
 
-async function prepareAgentWorkspace(): Promise<void> {
+async function prepareGuideWorkspace(): Promise<void> {
   const state = useStore.getState();
   const source = compositeStore.getCanvas();
 
@@ -538,9 +611,9 @@ async function prepareAgentWorkspace(): Promise<void> {
 
   const width = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsWidth));
   const height = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsHeight));
-  if (width * height > MAX_AGENT_WORKSPACE_PIXELS) {
+  if (width * height > MAX_GUIDE_WORKSPACE_PIXELS) {
     throw new Error(
-      "VLM Guide/Agent workspace is too large to allocate safely. " +
+      "VLM Guide workspace is too large to allocate safely. " +
         "Use canvas limits no larger than 4096 x 4096.",
     );
   }
@@ -558,7 +631,7 @@ async function prepareAgentWorkspace(): Promise<void> {
   workspace.height = height;
   const ctx = workspace.getContext("2d");
   if (!ctx) {
-    throw new Error("VLM Guide/Agent could not create its bounded workspace.");
+    throw new Error("VLM Guide could not create its bounded workspace.");
   }
 
   const offset = source
@@ -604,7 +677,7 @@ async function prepareAgentWorkspace(): Promise<void> {
   });
 }
 
-export function renderAgentPrompt(
+export function renderGuidePrompt(
   template: string,
   canvasSize: { width: number; height: number },
   bounds: { enabled: boolean; width: number; height: number },
@@ -626,38 +699,105 @@ export function renderAgentPrompt(
     .replaceAll("{canvas_limit}", canvasLimit);
 }
 
-async function requestAgentDecision(
+export interface VLMSelectPromptCandidate {
+  id: number;
+  slotIndex: number;
+  sourceText: string;
+  slotSignature: string;
+  prompt: string;
+}
+
+function selectPromptSlotSignature(
+  slot: PromptSlots[number],
+): string {
+  return JSON.stringify([
+    slot.text,
+    promptSlotAutoEnhanceMode(slot),
+    promptSlotVisionEnabled(slot),
+  ]);
+}
+
+export function buildSelectPromptCandidates(
+  slots: PromptSlots,
+): VLMSelectPromptCandidate[] {
+  return selectablePromptSlots(slots).map(({ text, index }) => {
+    const slot = slots[index];
+    return {
+      id: index + 1,
+      slotIndex: index,
+      sourceText: text,
+      slotSignature: selectPromptSlotSignature(slot),
+      prompt: replaceAllPlaceholders(text),
+    };
+  });
+}
+
+export function renderPromptPoolTemplate(
+  template: string,
+  candidates: readonly VLMSelectPromptCandidate[],
+  canvasSize: { width: number; height: number },
+  bounds: { enabled: boolean; width: number; height: number },
+): string {
+  if (!template.includes("{prompt_pool}")) {
+    throw new Error(
+      'VLM prompt must include the "{prompt_pool}" placeholder.',
+    );
+  }
+  const promptPool = JSON.stringify(
+    candidates.map(({ id, prompt }) => ({ id, prompt })),
+    null,
+    2,
+  );
+  return renderGuidePrompt(template, canvasSize, bounds).replaceAll(
+    "{prompt_pool}",
+    promptPool,
+  );
+}
+
+async function requestGuideDecision(
   canvas: HTMLCanvasElement,
-  behavior: Exclude<VLMBehavior, "point">,
+  choice: VLMGuidePromptChoice,
   signal?: AbortSignal,
-): Promise<VLMAgentDecision | VLMGuideDecision> {
+): Promise<VLMCanvasAction> {
   const live = useStore.getState();
   if (!live.vlmModel.trim()) {
     throw new Error("Select a Vision model under Advanced.");
   }
-  const template =
-    behavior === "agent"
-      ? live.vlmAgentPrompt.trim()
-      : live.vlmGuidePrompt.trim();
+  const template = (
+    choice === "select"
+      ? live.vlmSelectPrompt
+      : choice === "compose"
+        ? live.vlmAgentPrompt
+        : choice === "hybrid"
+          ? live.vlmHybridPrompt
+          : live.vlmGuidePrompt
+  ).trim();
   if (!template) {
-    throw new Error(`VLM ${behavior === "agent" ? "Agent" : "Guide"} prompt is empty.`);
+    throw new Error(`VLM ${guideChoiceLabel(choice)} prompt is empty.`);
   }
-  const instruction = renderAgentPrompt(
-    template,
-    { width: canvas.width, height: canvas.height },
-    {
-      enabled: live.boundsEnabled,
-      width: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsWidth)),
-      height: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsHeight)),
-    },
-  );
+  const canvasSize = { width: canvas.width, height: canvas.height };
+  const bounds = {
+    enabled: live.boundsEnabled,
+    width: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsWidth)),
+    height: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsHeight)),
+  };
+  const usesPromptPool = choice === "select" || choice === "hybrid";
+  const candidates = usesPromptPool
+    ? buildSelectPromptCandidates(live.pinnedPrompts)
+    : [];
+  if (choice === "select" && candidates.length === 0) {
+    throw new Error("Unmute at least one prompt slot for Guide Select.");
+  }
+  const instruction = usesPromptPool
+    ? renderPromptPoolTemplate(template, candidates, canvasSize, bounds)
+    : renderGuidePrompt(template, canvasSize, bounds);
   const frame = await captureVisionCanvas({ source: canvas });
   const provider = new OllamaVLMProvider(
     live.vlmModel,
     ollamaThinkFor(live.vlmModel, live.vlmThinkingMode),
   );
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < VLM_AGENT_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < VLM_GUIDE_ATTEMPTS; attempt++) {
     if (signal?.aborted) {
       throw new DOMException(
         "Generation aborted before VLM Guide decision",
@@ -667,57 +807,211 @@ async function requestAgentDecision(
     try {
       const rawHistory =
         live.vlmAgentHistoryLimit === 0 ? [] : live.vlmAgentHistory;
-      const decision =
-        behavior === "agent"
-          ? await provider.decide(
-              frame,
+      if (choice === "compose") {
+        const decision = await provider.compose(
+          frame,
+          instruction,
+          rawHistory
+            .filter(isComposeAction)
+            .map<VLMComposeDecision>(({ x, y, instruction }) => ({
+              x,
+              y,
               instruction,
-              rawHistory.filter(
-                (action): action is VLMAgentAction => "instruction" in action,
-              ),
-              signal,
-            )
-          : await provider.guide(
-              frame,
-              instruction,
-              rawHistory.map(({ x, y }) => ({ x, y })),
-              signal,
+            })),
+          signal,
+        );
+        if (decision) {
+          return {
+            x: decision.x,
+            y: decision.y,
+            instruction: decision.instruction.trim(),
+          };
+        }
+      } else if (choice === "select") {
+        const decision = await provider.select(
+          frame,
+          instruction,
+          candidates.map(({ id }) => id),
+          rawHistory
+            .filter(isPureSelectAction)
+            .map<VLMSelectHistoryItem>((action) => ({
+              x: action.x,
+              y: action.y,
+              prompt_id: action.promptId,
+              prompt: action.appliedPromptText ?? action.promptText,
+            })),
+          signal,
+        );
+        if (decision) {
+          const candidate = candidates.find(
+            ({ id }) => id === decision.prompt_id,
+          );
+          if (!candidate) {
+            throw new Error(
+              `VLM Select returned unknown prompt ID ${decision.prompt_id}.`,
             );
-      if (decision) return decision;
+          }
+          return {
+            x: decision.x,
+            y: decision.y,
+            promptId: candidate.id,
+            promptSlotIndex: candidate.slotIndex,
+            promptSourceText: candidate.sourceText,
+            promptSlotSignature: candidate.slotSignature,
+            promptText: candidate.prompt,
+          };
+        }
+      } else if (choice === "hybrid") {
+        const decision = await provider.hybrid(
+          frame,
+          instruction,
+          candidates.map(({ id }) => id),
+          rawHistory
+            .filter(isHybridAction)
+            .map<VLMHybridHistoryItem>((action) => ({
+              x: action.x,
+              y: action.y,
+              source: action.hybridSource,
+              prompt_id:
+                action.hybridSource === "pool" ? action.promptId : 0,
+              instruction:
+                action.hybridSource === "write" ? action.instruction : "",
+              prompt:
+                action.hybridSource === "pool"
+                  ? action.appliedPromptText ?? action.promptText
+                  : action.instruction,
+            })),
+          signal,
+        );
+        if (decision?.source === "write") {
+          return {
+            x: decision.x,
+            y: decision.y,
+            hybridSource: "write",
+            promptId: 0,
+            instruction: decision.instruction.trim(),
+          };
+        }
+        if (decision?.source === "pool") {
+          const candidate = candidates.find(
+            ({ id }) => id === decision.prompt_id,
+          );
+          if (!candidate) {
+            throw new Error(
+              `VLM Hybrid returned unknown prompt ID ${decision.prompt_id}.`,
+            );
+          }
+          return {
+            x: decision.x,
+            y: decision.y,
+            hybridSource: "pool",
+            promptId: candidate.id,
+            promptSlotIndex: candidate.slotIndex,
+            promptSourceText: candidate.sourceText,
+            promptSlotSignature: candidate.slotSignature,
+            promptText: candidate.prompt,
+          };
+        }
+      } else {
+        const decision: VLMGuideDecision | null = await provider.guide(
+          frame,
+          instruction,
+          rawHistory.map(({ x, y }) => ({ x, y })),
+          signal,
+        );
+        if (decision) return { x: decision.x, y: decision.y };
+      }
     } catch (err) {
       if (isAbortError(err)) throw err;
       lastError = err;
       console.warn(
-        `VLM ${behavior === "agent" ? "Agent" : "Guide"} attempt ${attempt + 1}/${VLM_AGENT_ATTEMPTS} failed.`,
+        `VLM ${guideChoiceLabel(choice)} attempt ${attempt + 1}/${VLM_GUIDE_ATTEMPTS} failed.`,
         err,
       );
     }
   }
   if (lastError instanceof Error) throw lastError;
   throw new Error(
-    `VLM ${behavior === "agent" ? "Agent" : "Guide"} returned no valid decision after ${VLM_AGENT_ATTEMPTS} attempts.`,
+    `VLM ${guideChoiceLabel(choice)} returned no valid decision after ${VLM_GUIDE_ATTEMPTS} attempts.`,
   );
 }
 
-async function applyAgentDecision(
-  decision: VLMAgentDecision | VLMGuideDecision,
-  behavior: Exclude<VLMBehavior, "point">,
+function guideChoiceLabel(choice: VLMGuidePromptChoice): string {
+  return choice[0].toUpperCase() + choice.slice(1);
+}
+
+function isSelectAction(action: VLMCanvasAction): action is VLMSelectAction {
+  return "promptSlotIndex" in action;
+}
+
+function isHybridAction(
+  action: VLMCanvasAction,
+): action is VLMHybridSelectAction | VLMHybridWriteAction {
+  return "hybridSource" in action;
+}
+
+function isPureSelectAction(action: VLMCanvasAction): action is VLMSelectAction {
+  return isSelectAction(action) && !isHybridAction(action);
+}
+
+function isComposeAction(action: VLMCanvasAction): action is VLMAgentAction {
+  return isAuthoredAction(action) && !isHybridAction(action);
+}
+
+function isAuthoredAction(
+  action: VLMCanvasAction,
+): action is VLMAgentAction | VLMHybridWriteAction {
+  return (
+    "instruction" in action &&
+    typeof action.instruction === "string"
+  );
+}
+
+function selectedActionMatchesState(action: VLMSelectAction): boolean {
+  const slot = useStore.getState().pinnedPrompts[action.promptSlotIndex];
+  return (
+    Boolean(slot) &&
+    !promptSlotMuted(slot) &&
+    slot.text === action.promptSourceText &&
+    selectPromptSlotSignature(slot) === action.promptSlotSignature
+  );
+}
+
+function pendingActionMatchesState(action: VLMCanvasAction): boolean {
+  const live = useStore.getState();
+  if (live.vlmBehavior !== "guide") return false;
+  switch (live.vlmGuidePromptChoice) {
+    case "rotate":
+      return (
+        !("instruction" in action) &&
+        !isSelectAction(action) &&
+        !isHybridAction(action)
+      );
+    case "select":
+      return isPureSelectAction(action) && selectedActionMatchesState(action);
+    case "compose":
+      return isComposeAction(action) && Boolean(action.instruction.trim());
+    case "hybrid":
+      if (!isHybridAction(action)) return false;
+      return action.hybridSource === "write"
+        ? Boolean(action.instruction.trim())
+        : selectedActionMatchesState(action);
+  }
+}
+
+async function applyGuideDecision(
+  action: VLMCanvasAction,
   canvasSize: { width: number; height: number },
 ): Promise<void> {
-  const x = clamp01(decision.x);
-  const y = clamp01(decision.y);
-  let action: VLMCanvasAction;
-  if (behavior === "agent") {
-    if (!("instruction" in decision) || !decision.instruction.trim()) {
-      throw new Error("VLM Agent returned an empty edit instruction.");
-    }
-    action = { x, y, instruction: decision.instruction.trim() };
-  } else {
-    action = { x, y };
+  const normalized = { ...action, x: clamp01(action.x), y: clamp01(action.y) };
+  if ("instruction" in normalized && !normalized.instruction.trim()) {
+    throw new Error("VLM Compose returned an empty edit instruction.");
   }
-  await pullHandle.triggerAt(pullPositionForCanvasPoint(action, canvasSize));
+  await pullHandle.triggerAt(
+    pullPositionForCanvasPoint(normalized, canvasSize),
+  );
   useStore.getState().patch({
-    vlmAgentAction: action,
+    vlmAgentAction: normalized,
     // Pull centers the selected canvas coordinate in the local generation frame.
     vlmPoint: { x: 0.5, y: 0.5 },
   });
@@ -725,8 +1019,9 @@ async function applyAgentDecision(
 
 /**
  * VLM-mode per-generation step. Point behavior keeps its existing frame/canvas
- * policies. Guide and Agent always read the complete current canvas. Guide
- * chooses only the Pull location; Agent also supplies generation text.
+ * policies. Guide always reads the complete current canvas and chooses the Pull
+ * location. Its prompt strategy may rotate, select, compose, or choose between
+ * selecting and composing.
  *
  * Writing to the store rather than the heatmap directly is deliberate: the
  * tracker re-emits the stored point every tick, so it survives the heatmap
@@ -754,13 +1049,17 @@ async function maybeUpdateVlmTracking(
   }
 
   if (live.vlmBehavior !== "point") {
-    const behavior = live.vlmBehavior;
+    const guidePromptChoice = live.vlmGuidePromptChoice;
     const canvas = compositeStore.getCanvas();
     if (!canvas) {
-      throw new Error("VLM Guide/Agent requires an active composite.");
+      throw new Error("VLM Guide requires an active composite.");
     }
     const canvasSize = { width: canvas.width, height: canvas.height };
-    const nextDecision = await requestAgentDecision(canvas, behavior, signal);
+    let nextAction = await requestGuideDecision(
+      canvas,
+      guidePromptChoice,
+      signal,
+    );
     if (signal?.aborted) {
       throw new DOMException(
         "Generation aborted before VLM canvas decision",
@@ -771,12 +1070,41 @@ async function maybeUpdateVlmTracking(
     const current = useStore.getState();
     if (
       current.trackingMode !== "vlm" ||
-      current.vlmBehavior !== behavior ||
+      current.vlmBehavior !== "guide" ||
+      current.vlmGuidePromptChoice !== guidePromptChoice ||
       !current.trackingActive
     ) {
       return;
     }
-    await applyAgentDecision(nextDecision, behavior, canvasSize);
+    if (!pendingActionMatchesState(nextAction)) {
+      nextAction = await requestGuideDecision(
+        canvas,
+        guidePromptChoice,
+        signal,
+      );
+      if (signal?.aborted) {
+        throw new DOMException(
+          "Generation aborted before refreshed VLM canvas decision",
+          "AbortError",
+        );
+      }
+      if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
+      const refreshed = useStore.getState();
+      if (
+        refreshed.trackingMode !== "vlm" ||
+        refreshed.vlmBehavior !== "guide" ||
+        refreshed.vlmGuidePromptChoice !== guidePromptChoice ||
+        !refreshed.trackingActive
+      ) {
+        return;
+      }
+      if (!pendingActionMatchesState(nextAction)) {
+        throw new Error(
+          "Guide prompt pool changed repeatedly during its decision.",
+        );
+      }
+    }
+    await applyGuideDecision(nextAction, canvasSize);
     return;
   }
 

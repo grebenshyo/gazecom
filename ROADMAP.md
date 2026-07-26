@@ -51,3 +51,26 @@ current tasks.
 - Cold-start first-launch path (fresh mDNS/ws) only validated by reasoning +
   the retry/error-wrap; confirm on a genuinely fresh machine.
 - Code signing / notarization to avoid the Gatekeeper "Open" step.
+
+## Compatibility Cleanup
+
+- Replace the active `gengaze.*` browser-storage namespace with `gazecom.*`,
+  bump settings exports to schema 2, and intentionally stop importing schema-1
+  settings.
+- Remove superseded standalone tracking storage, the single `matteEnabled`
+  fallback, the old VLM `agent` migration/API alias, the historical Ollama
+  `"thinking"` migration, and the obsolete backend-config-route error.
+- Rename current `vlmAgent*` internals to Guide/Compose terminology, retain the
+  browser debugging interface as `window.gazecom`, and remove the unused legacy
+  `WorkflowType` re-export.
+- Remove the one-time `GenGaze` user-data copy, the `gengaze-backend` CLI alias,
+  obsolete Comfy LLM comments, the old upload prefix, and stale workflow test
+  nomenclature.
+- Remove `/api/generate`'s unused `selected_image` branch unless an external API
+  consumer is identified.
+- Rename the Python import package from `gengaze` to `gazecom` in a separate
+  commit, followed by full backend, launcher, packaging, CI, and release-build
+  verification.
+- Preserve operational fallbacks for Ollama APIs and thinking capabilities,
+  cameras/browsers, host resolution, Comfy output detection and completion,
+  inpainting masks, and provider-error handling.

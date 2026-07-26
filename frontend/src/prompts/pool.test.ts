@@ -6,11 +6,13 @@ import {
   nextPromptAutoEnhanceMode,
   pickPromptSlot,
   promptPoolHasActiveSlot,
+  promptPoolHasSelectableSlot,
   promptSlotAutoEnhanceMode,
   promptSlotMuted,
   promptSlotVisionEnabled,
   promptSlotsForPersistence,
   promptPoolIsValid,
+  selectablePromptSlots,
   removePromptSlot,
   setPromptSlotAutoEnhanceMode,
   setPromptSlotDerivedHeight,
@@ -412,6 +414,31 @@ describe("promptPoolIsValid", () => {
         { text: "   ", weight: 100, height: null },
       ]),
     ).toBe(true);
+  });
+});
+
+describe("Guide Select candidates", () => {
+  it("uses mute rather than weight to determine eligibility", () => {
+    const slots: PromptSlots = [
+      { text: "weighted", weight: 100, height: null, muted: true },
+      { text: "zero", weight: 0, height: null },
+      { text: "", weight: 0, height: null },
+    ];
+
+    expect(promptPoolHasSelectableSlot(slots)).toBe(true);
+    expect(selectablePromptSlots(slots)).toEqual([
+      { text: "zero", index: 1 },
+      { text: "", index: 2 },
+    ]);
+  });
+
+  it("requires at least one unmuted slot", () => {
+    const slots: PromptSlots = [
+      { text: "a", weight: 1, height: null, muted: true },
+    ];
+
+    expect(promptPoolHasSelectableSlot(slots)).toBe(false);
+    expect(selectablePromptSlots(slots)).toEqual([]);
   });
 });
 

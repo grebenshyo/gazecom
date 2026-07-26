@@ -61,11 +61,17 @@ describe("settings files", () => {
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
     writeJSON(StorageKeys.llmThinkingMode, "off");
     writeJSON(StorageKeys.vlmThinkingMode, "low");
-    writeJSON(StorageKeys.vlmBehavior, "agent");
+    writeJSON(StorageKeys.vlmBehavior, "guide");
+    writeJSON(StorageKeys.vlmGuidePromptChoice, "hybrid");
     writeJSON(StorageKeys.vlmAgentHistoryLimit, 12);
     writeJSON(StorageKeys.vlmScope, "canvas");
     writeJSON(StorageKeys.vlmGuidePrompt, "Choose the next location.");
+    writeJSON(StorageKeys.vlmSelectPrompt, "Choose from {prompt_pool}.");
     writeJSON(StorageKeys.vlmAgentPrompt, "Choose the next edit.");
+    writeJSON(
+      StorageKeys.vlmHybridPrompt,
+      "Choose or write from {prompt_pool}.",
+    );
     writeJSON(StorageKeys.vlmPointPromptHeight, 180);
     writeJSON(StorageKeys.vlmAgentActionHeight, 96);
     writeJSON(StorageKeys.autoCollapsePanels, true);
@@ -82,11 +88,14 @@ describe("settings files", () => {
         vlmModel: "gemma4:latest",
         llmThinkingMode: "off",
         vlmThinkingMode: "low",
-        vlmBehavior: "agent",
+        vlmBehavior: "guide",
+        vlmGuidePromptChoice: "hybrid",
         vlmAgentHistoryLimit: 12,
         vlmScope: "canvas",
         vlmGuidePrompt: "Choose the next location.",
+        vlmSelectPrompt: "Choose from {prompt_pool}.",
         vlmAgentPrompt: "Choose the next edit.",
+        vlmHybridPrompt: "Choose or write from {prompt_pool}.",
         vlmPointPromptHeight: 180,
         vlmAgentActionHeight: 96,
         autoCollapsePanels: true,
@@ -146,6 +155,16 @@ describe("settings files", () => {
         settings: { vlmBehavior: "automatic" },
       }),
     ).toThrow('Invalid value for setting "vlmBehavior".');
+  });
+
+  it("rejects an invalid Guide prompt choice", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { vlmGuidePromptChoice: "weighted-select" },
+      }),
+    ).toThrow('Invalid value for setting "vlmGuidePromptChoice".');
   });
 
   it("rejects an invalid Agent history limit", () => {

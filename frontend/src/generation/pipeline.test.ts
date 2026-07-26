@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSelectPromptCandidates,
   inputKindFor,
   pullPositionForCanvasPoint,
-  renderAgentPrompt,
+  renderGuidePrompt,
+  renderPromptPoolTemplate,
   resolveInputCOM,
   resolvePromptTransforms,
 } from "./pipeline";
@@ -80,10 +82,10 @@ describe("pullPositionForCanvasPoint", () => {
   });
 });
 
-describe("renderAgentPrompt", () => {
+describe("renderGuidePrompt", () => {
   it("describes a bounded workspace with live dimensions", () => {
     expect(
-      renderAgentPrompt(
+      renderGuidePrompt(
         "Crop {crop_size}; canvas {canvas_width}x{canvas_height}. {canvas_limit}",
         { width: 2048, height: 1536 },
         { enabled: true, width: 2048, height: 1536 },
@@ -94,7 +96,7 @@ describe("renderAgentPrompt", () => {
   });
 
   it("explains edge expansion when the canvas is unbounded", () => {
-    const prompt = renderAgentPrompt(
+    const prompt = renderGuidePrompt(
       "{canvas_limit} {max_width}x{max_height}",
       { width: 1024, height: 1024 },
       { enabled: false, width: 2048, height: 2048 },
@@ -102,6 +104,74 @@ describe("renderAgentPrompt", () => {
 
     expect(prompt).toContain("choosing an edge lets the next crop expand it");
     expect(prompt).toContain("unboundedxunbounded");
+  });
+});
+
+describe("renderPromptPoolTemplate", () => {
+  it("expands the visible prompt-pool contract with stable slot IDs", () => {
+    const candidates = buildSelectPromptCandidates([
+      { text: "red shape", weight: 0, height: null },
+      { text: "hidden", weight: 100, height: null, muted: true },
+      { text: "blue field", weight: 1, height: null },
+    ]);
+
+    expect(candidates).toEqual([
+      {
+        id: 1,
+        slotIndex: 0,
+        sourceText: "red shape",
+        slotSignature: '["red shape","off",false]',
+        prompt: "red shape",
+      },
+      {
+        id: 3,
+        slotIndex: 2,
+        sourceText: "blue field",
+        slotSignature: '["blue field","off",false]',
+        prompt: "blue field",
+      },
+    ]);
+    const prompt = renderPromptPoolTemplate(
+      "Candidates:\n{prompt_pool}\nCrop {crop_size}.",
+      candidates,
+      { width: 2048, height: 2048 },
+      { enabled: true, width: 2048, height: 2048 },
+    );
+    expect(prompt).toContain('"id": 1');
+    expect(prompt).toContain('"prompt": "red shape"');
+    expect(prompt).toContain('"id": 3');
+    expect(prompt).not.toContain("hidden");
+    expect(prompt).toContain("Crop 1024.");
+  });
+
+  it("refuses to hide the candidate pool outside the editable prompt", () => {
+    expect(() =>
+      renderPromptPoolTemplate(
+        "Choose a prompt ID.",
+        [
+          {
+            id: 1,
+            slotIndex: 0,
+            sourceText: "red",
+            slotSignature: '["red","off",false]',
+            prompt: "red",
+          },
+        ],
+        { width: 1024, height: 1024 },
+        { enabled: false, width: 2048, height: 2048 },
+      ),
+    ).toThrow('must include the "{prompt_pool}" placeholder');
+  });
+
+  it("exposes an empty pool so Hybrid can still choose to write", () => {
+    const prompt = renderPromptPoolTemplate(
+      "Available prompts:\n{prompt_pool}",
+      [],
+      { width: 1024, height: 1024 },
+      { enabled: false, width: 2048, height: 2048 },
+    );
+
+    expect(prompt).toContain("Available prompts:\n[]");
   });
 });
 

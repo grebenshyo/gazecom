@@ -51,12 +51,15 @@ export const StorageKeys = {
   vlmModel: "gengaze.vlmModel",
   vlmThinkingMode: "gengaze.vlmThinkingMode",
   vlmBehavior: "gengaze.vlmBehavior",
+  vlmGuidePromptChoice: "gengaze.vlmGuidePromptChoice",
   vlmAgentHistoryLimit: "gengaze.vlmAgentHistoryLimit",
   vlmScope: "gengaze.vlmScope",
   llmEnhancePrompt: "gengaze.llmEnhancePrompt",
   vlmPointPrompt: "gengaze.vlmPointPrompt",
   vlmGuidePrompt: "gengaze.vlmGuidePrompt",
+  vlmSelectPrompt: "gengaze.vlmSelectPrompt",
   vlmAgentPrompt: "gengaze.vlmAgentPrompt",
+  vlmHybridPrompt: "gengaze.vlmHybridPrompt",
   vlmPointPromptHeight: "gengaze.vlmPointPromptHeight",
   vlmAgentActionHeight: "gengaze.vlmAgentActionHeight",
   // ui
@@ -261,10 +264,15 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "llmEnhancePrompt":
     case "vlmPointPrompt":
     case "vlmGuidePrompt":
+    case "vlmSelectPrompt":
     case "vlmAgentPrompt":
+    case "vlmHybridPrompt":
       return typeof value === "string";
     case "vlmBehavior":
+      // "agent" remains valid for importing settings from pre-consolidation builds.
       return isOneOf(value, ["point", "guide", "agent"]);
+    case "vlmGuidePromptChoice":
+      return isOneOf(value, ["rotate", "select", "compose", "hybrid"]);
     case "vlmAgentHistoryLimit":
       return (
         isFiniteNumber(value) &&

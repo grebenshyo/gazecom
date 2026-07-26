@@ -46,7 +46,12 @@ export type TrackingMode =
 export type CompositeFitTarget = "patch" | "composite";
 export type UIScale = 72 | 80 | 100;
 export type { OllamaThinkingMode } from "../generation/api";
-export type VLMBehavior = "point" | "guide" | "agent";
+export type VLMBehavior = "point" | "guide";
+export type VLMGuidePromptChoice =
+  | "rotate"
+  | "select"
+  | "compose"
+  | "hybrid";
 export type VLMScope = "frame" | "canvas";
 
 export type LLMModel = string;
@@ -93,6 +98,37 @@ export const DEFAULT_VLM_GUIDE_PROMPT =
   "{canvas_limit} Return only strict JSON using a 0-1000 coordinate grid: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
 
+export const DEFAULT_VLM_SELECT_PROMPT =
+  "Guide the next step of an image composition. Inspect the complete current " +
+  "canvas and the available prompt candidates below.\n\n" +
+  "Available prompts:\n{prompt_pool}\n\n" +
+  "Choose the center coordinate of the next {crop_size} x {crop_size} " +
+  "generation crop and select the prompt best suited to that area. Take " +
+  "previous selected locations and prompts into account. {canvas_limit} " +
+  "Return only strict JSON using a 0-1000 coordinate grid and one available " +
+  'prompt ID: {"x": <0-1000>, "y": <0-1000>, "prompt_id": <available ID>}. ' +
+  "No explanation, no other text.";
+
+export const DEFAULT_VLM_HYBRID_PROMPT =
+  "Inspect the complete current canvas and make one decision about the next " +
+  "{crop_size} x {crop_size} generation crop.\n\n" +
+  "First choose the crop location. Return its center on a 0-1000 coordinate " +
+  "grid: x runs from left to right and y runs from top to bottom. Do not " +
+  "automatically choose (500,500), and do not reuse an x/y pair from a " +
+  "previous decision.\n\n" +
+  "Available prompts:\n{prompt_pool}\n\n" +
+  'Then choose source "pool" if an available prompt already fits that area. ' +
+  "Return its ID and leave instruction empty. Choose source \"write\" if the " +
+  "area needs a new or more specific prompt. Use prompt ID 0 and write a " +
+  "complete image-generation instruction; you may adapt or combine ideas from " +
+  "the pool, or introduce your own.\n\n" +
+  "Consider previous locations and applied prompts. {canvas_limit}\n\n" +
+  "Return only strict JSON: " +
+  '{"x": <0-1000>, "y": <0-1000>, "source": "<pool|write>", ' +
+  '"prompt_id": <available ID for pool, 0 for write>, ' +
+  '"instruction": "<empty for pool; complete prompt for write>"}. ' +
+  "No explanation, no other text.";
+
 export interface VLMAgentAction {
   x: number;
   y: number;
@@ -104,7 +140,36 @@ export interface VLMGuideAction {
   y: number;
 }
 
-export type VLMCanvasAction = VLMAgentAction | VLMGuideAction;
+export interface VLMSelectAction extends VLMGuideAction {
+  /** Candidate ID exposed to the VLM for this decision. */
+  promptId: number;
+  /** Original prompt-slot index used for UI state and per-slot transforms. */
+  promptSlotIndex: number;
+  /** Authored text used to detect stale pending decisions. */
+  promptSourceText: string;
+  /** Generation-relevant slot settings used to reject stale index reuse. */
+  promptSlotSignature: string;
+  /** Concrete placeholder-resolved prompt shown to and selected by the VLM. */
+  promptText: string;
+  /** Final prompt sent after this slot's optional LLM/vision transforms. */
+  appliedPromptText?: string;
+}
+
+export interface VLMHybridSelectAction extends VLMSelectAction {
+  hybridSource: "pool";
+}
+
+export interface VLMHybridWriteAction extends VLMAgentAction {
+  hybridSource: "write";
+  promptId: 0;
+}
+
+export type VLMCanvasAction =
+  | VLMAgentAction
+  | VLMGuideAction
+  | VLMSelectAction
+  | VLMHybridSelectAction
+  | VLMHybridWriteAction;
 
 export interface PatchBox {
   x: number;
@@ -131,13 +196,15 @@ export interface AppState {
   vlmPoint: { x: number; y: number } | null;
   /** VLM tracking policy: locate saliency, or guide the next Pull location. */
   vlmBehavior: VLMBehavior;
-  /** Pending Agent decision used by the next generation only. Transient. */
+  /** Guide prompt strategy: rotate, select, compose, or combine both sources. */
+  vlmGuidePromptChoice: VLMGuidePromptChoice;
+  /** Pending Guide decision used by the next generation only. Transient. */
   vlmAgentAction: VLMCanvasAction | null;
-  /** Successfully applied Agent decisions for the current composition. */
+  /** Successfully applied Guide decisions for the current composition. */
   vlmAgentHistory: VLMCanvasAction[];
-  /** Maximum applied Agent decisions retained; zero disables continuity. */
+  /** Maximum applied Guide decisions retained; zero disables continuity. */
   vlmAgentHistoryLimit: number;
-  /** Whether bounded Agent mode has prepared its fixed workspace. Transient. */
+  /** Whether bounded Guide mode has prepared its fixed workspace. Transient. */
   vlmAgentWorkspaceReady: boolean;
   /**
    * Travel-speed multiplier for the synthetic roamers (roam / roam2).
@@ -313,11 +380,15 @@ export interface AppState {
   vlmPointPrompt: string;
   /** VLM Guide navigation template (Settings). */
   vlmGuidePrompt: string;
-  /** VLM Agent action template (Settings). */
+  /** VLM Guide Select template, including the visible prompt-pool contract. */
+  vlmSelectPrompt: string;
+  /** VLM Compose template. Legacy Agent storage is retained for compatibility. */
   vlmAgentPrompt: string;
+  /** VLM Hybrid template, including the visible prompt-pool contract. */
+  vlmHybridPrompt: string;
   /** User-resized VLM instruction textarea height in CSS pixels. */
   vlmPointPromptHeight: number;
-  /** User-resized read-only Agent action height in CSS pixels. */
+  /** User-resized read-only Compose/Hybrid action height in CSS pixels. */
   vlmAgentActionHeight: number;
 
   // ── Last-pick feedback (transient — not persisted) ───────────────
@@ -405,11 +476,14 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.trackingMode,
     StorageKeys.eventHistoryLength,
     StorageKeys.vlmBehavior,
+    StorageKeys.vlmGuidePromptChoice,
     StorageKeys.vlmAgentHistoryLimit,
     StorageKeys.vlmScope,
     StorageKeys.vlmPointPrompt,
     StorageKeys.vlmGuidePrompt,
+    StorageKeys.vlmSelectPrompt,
     StorageKeys.vlmAgentPrompt,
+    StorageKeys.vlmHybridPrompt,
     StorageKeys.vlmPointPromptHeight,
     StorageKeys.vlmAgentActionHeight,
   ],
@@ -467,13 +541,33 @@ function loadInitial(): AppState {
         ),
       ]
     : [];
+  const storedVlmBehavior = readJSON<unknown>(StorageKeys.vlmBehavior, "point");
+  const storedGuidePromptChoice = readJSON<unknown>(
+    StorageKeys.vlmGuidePromptChoice,
+    "rotate",
+  );
+  const legacyAgent = storedVlmBehavior === "agent";
+  const vlmBehavior: VLMBehavior =
+    storedVlmBehavior === "guide" || legacyAgent ? "guide" : "point";
+  const vlmGuidePromptChoice: VLMGuidePromptChoice = legacyAgent
+    ? "compose"
+    : storedGuidePromptChoice === "select" ||
+        storedGuidePromptChoice === "compose" ||
+        storedGuidePromptChoice === "hybrid"
+      ? storedGuidePromptChoice
+      : "rotate";
+  if (legacyAgent) {
+    writeJSON(StorageKeys.vlmBehavior, "guide");
+    writeJSON(StorageKeys.vlmGuidePromptChoice, "compose");
+  }
   return {
     trackingMode,
     trackingProfiles,
     trackingActive: false,
     trackerCalibrated: false,
     vlmPoint: null,
-    vlmBehavior: readJSON<VLMBehavior>(StorageKeys.vlmBehavior, "point"),
+    vlmBehavior,
+    vlmGuidePromptChoice,
     vlmAgentAction: null,
     vlmAgentHistory: [],
     vlmAgentHistoryLimit: loadVlmAgentHistoryLimit(),
@@ -567,9 +661,17 @@ function loadInitial(): AppState {
       StorageKeys.vlmGuidePrompt,
       DEFAULT_VLM_GUIDE_PROMPT,
     ),
+    vlmSelectPrompt: readJSON<string>(
+      StorageKeys.vlmSelectPrompt,
+      DEFAULT_VLM_SELECT_PROMPT,
+    ),
     vlmAgentPrompt: readJSON<string>(
       StorageKeys.vlmAgentPrompt,
       DEFAULT_VLM_AGENT_PROMPT,
+    ),
+    vlmHybridPrompt: readJSON<string>(
+      StorageKeys.vlmHybridPrompt,
+      DEFAULT_VLM_HYBRID_PROMPT,
     ),
     vlmPointPromptHeight: readJSON<number>(
       StorageKeys.vlmPointPromptHeight,
@@ -735,12 +837,15 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmModel", StorageKeys.vlmModel],
   ["vlmThinkingMode", StorageKeys.vlmThinkingMode],
   ["vlmBehavior", StorageKeys.vlmBehavior],
+  ["vlmGuidePromptChoice", StorageKeys.vlmGuidePromptChoice],
   ["vlmAgentHistoryLimit", StorageKeys.vlmAgentHistoryLimit],
   ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
   ["vlmGuidePrompt", StorageKeys.vlmGuidePrompt],
+  ["vlmSelectPrompt", StorageKeys.vlmSelectPrompt],
   ["vlmAgentPrompt", StorageKeys.vlmAgentPrompt],
+  ["vlmHybridPrompt", StorageKeys.vlmHybridPrompt],
   ["vlmPointPromptHeight", StorageKeys.vlmPointPromptHeight],
   ["vlmAgentActionHeight", StorageKeys.vlmAgentActionHeight],
   ["theme", StorageKeys.theme],
@@ -795,6 +900,16 @@ export const useStore = create<AppState & AppActions>()(
         });
         return;
       }
+      if (key === "vlmGuidePromptChoice") {
+        set({
+          vlmGuidePromptChoice: value as VLMGuidePromptChoice,
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+          vlmAgentWorkspaceReady: false,
+        });
+        return;
+      }
       if (key === "vlmAgentHistoryLimit") {
         set({
           vlmAgentHistoryLimit: Math.min(
@@ -814,7 +929,9 @@ export const useStore = create<AppState & AppActions>()(
       if (
         key === "vlmModel" ||
         key === "vlmGuidePrompt" ||
+        key === "vlmSelectPrompt" ||
         key === "vlmAgentPrompt" ||
+        key === "vlmHybridPrompt" ||
         key === "selectedImage" ||
         key === "boundsEnabled" ||
         key === "boundsWidth" ||
@@ -898,11 +1015,14 @@ export const useStore = create<AppState & AppActions>()(
               pointJitter: activeProfile.pointJitter,
               eventHistoryLength: defaults.eventHistoryLength,
               vlmBehavior: defaults.vlmBehavior,
+              vlmGuidePromptChoice: defaults.vlmGuidePromptChoice,
               vlmAgentHistoryLimit: defaults.vlmAgentHistoryLimit,
               vlmScope: defaults.vlmScope,
               vlmPointPrompt: defaults.vlmPointPrompt,
               vlmGuidePrompt: defaults.vlmGuidePrompt,
+              vlmSelectPrompt: defaults.vlmSelectPrompt,
               vlmAgentPrompt: defaults.vlmAgentPrompt,
+              vlmHybridPrompt: defaults.vlmHybridPrompt,
               vlmPointPromptHeight: defaults.vlmPointPromptHeight,
               vlmAgentActionHeight: defaults.vlmAgentActionHeight,
               trackingActive: false,

@@ -153,7 +153,7 @@ test("prompt slots can be muted and retain that state across reloads", async ({
 
   await page.getByRole("button", { name: "Mute prompt slot 1" }).click();
   await expect(
-    page.getByText("Unmute a prompt slot with a weight above 0 to generate."),
+    page.getByText("Unmute a prompt slot or give one a weight above 0 to generate."),
   ).toBeVisible();
 
   await page.reload();
@@ -163,7 +163,7 @@ test("prompt slots can be muted and retain that state across reloads", async ({
   await page.getByRole("button", { name: "Unmute prompt slot 1" }).click();
   await expect(weight).toHaveValue("42");
   await expect(
-    page.getByText("Unmute a prompt slot with a weight above 0 to generate."),
+    page.getByText("Unmute a prompt slot or give one a weight above 0 to generate."),
   ).toBeHidden();
 });
 
@@ -202,10 +202,7 @@ test("VLM prompt height survives collapsing the command palette", async ({
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();
-  await page
-    .locator("button.gz-section__title")
-    .filter({ hasText: /^Advanced/ })
-    .click();
+  await page.getByRole("combobox", { name: "Mode", exact: true }).selectOption("vlm");
 
   const vlmPrompt = page.getByRole("textbox", { name: "VLM prompt" });
   await vlmPrompt.evaluate((textarea) => {
@@ -255,7 +252,6 @@ test("settings drawer escapes the panel and implicitly saves hosts", async ({
     drawer.getByRole("checkbox", { name: "Skip provider errors" }),
   ).toBeVisible();
   await expect(drawer.getByRole("button", { name: "Medium" })).toBeVisible();
-  await expect(drawer.getByRole("slider", { name: "Frame zoom" })).toBeVisible();
   await expect(
     drawer.getByRole("checkbox", { name: "Auto-collapse panels" }),
   ).toBeVisible();
@@ -360,6 +356,10 @@ test("tracking-mode dropdown switches between all seven trackers", async ({
     .locator("button.gz-section__title")
     .filter({ hasText: /^Advanced/ })
     .click();
+  await page
+    .locator("button.gz-section__title")
+    .filter({ hasText: /^Settings/ })
+    .click();
   await expect(
     page.getByRole("checkbox", { name: /Calibration cache/ }),
   ).toBeEnabled();
@@ -419,6 +419,22 @@ test("tracking-mode dropdown switches between all seven trackers", async ({
     await trackingSelect.selectOption(option);
     await expect(trackingSelect).toHaveValue(option);
   }
+
+  await expect(page.getByRole("combobox", { name: "Behavior" })).toHaveValue(
+    "point",
+  );
+  await page.getByRole("combobox", { name: "Behavior" }).selectOption("guide");
+  const choice = page.getByRole("combobox", { name: "Choice" });
+  await expect(choice.locator("option")).toHaveText([
+    "Rotate",
+    "Select",
+    "Compose",
+    "Hybrid",
+  ]);
+  await choice.selectOption("hybrid");
+  await expect(
+    page.getByRole("textbox", { name: "Hybrid prompt" }),
+  ).toBeVisible();
 });
 
 test("workflows populate the grouped color-coded picker", async ({
@@ -426,11 +442,6 @@ test("workflows populate the grouped color-coded picker", async ({
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();
-
-  await page
-    .locator("button.gz-section__title")
-    .filter({ hasText: /^Settings/ })
-    .click();
 
   const workflowPicker = page.getByRole("button", { name: "Pool" });
   await expect(
@@ -447,12 +458,12 @@ test("workflows populate the grouped color-coded picker", async ({
   );
   await page.getByRole("option", { name: "flux.2 klein edit" }).click();
   await expect(page.getByText("flux.2 klein edit", { exact: true })).toBeVisible();
-  await expect(page.getByRole("spinbutton", { name: "Steps" })).toHaveValue("10");
+  await expect(page.getByRole("spinbutton", { name: "Steps" })).toHaveValue("4");
 
   const weight = page.getByRole("spinbutton", {
     name: "flux.2 klein edit weight",
   });
-  await expect(weight).toHaveValue("100");
+  await expect(weight).toHaveValue("1");
   await page.getByRole("button", { name: "Mute flux.2 klein edit" }).click();
   await expect(weight).toBeDisabled();
   await expect(page.getByRole("button", { name: "Generate image" })).toBeDisabled();
@@ -476,6 +487,10 @@ test("iterative-mode toggle enables and updates the delay slider", async ({
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();
+  await page
+    .locator("button.gz-section__title")
+    .filter({ hasText: /^Settings/ })
+    .click();
 
   const iterativeToggle = page.getByRole("checkbox", { name: "Iterative" });
   await iterativeToggle.check();

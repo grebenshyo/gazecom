@@ -30,6 +30,7 @@ import {
   type OllamaThinkingMode,
   type TrackingMode,
   type VLMBehavior,
+  type VLMGuidePromptChoice,
   type VLMScope,
 } from "../store";
 import { compositeStore } from "../canvas/CompositeStore";
@@ -60,6 +61,7 @@ import {
   addPromptSlot,
   nextPromptAutoEnhanceMode,
   promptPoolHasActiveSlot,
+  promptPoolHasSelectableSlot,
   promptSlotAutoEnhanceMode,
   promptSlotMuted,
   promptSlotVisionEnabled,
@@ -112,7 +114,16 @@ const VLM_BEHAVIOR_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "point", label: "Point" },
   { value: "guide", label: "Guide" },
-  { value: "agent", label: "Agent" },
+];
+
+const VLM_GUIDE_PROMPT_CHOICE_OPTIONS: ReadonlyArray<{
+  value: VLMGuidePromptChoice;
+  label: string;
+}> = [
+  { value: "rotate", label: "Rotate" },
+  { value: "select", label: "Select" },
+  { value: "compose", label: "Compose" },
+  { value: "hybrid", label: "Hybrid" },
 ];
 
 const OLLAMA_THINKING_LABELS: Record<OllamaThinkingMode, string> = {
@@ -252,7 +263,14 @@ export function ControlPanel({
   }, [s.panelMinimized, s.trackingMode, s.vlmBehavior]);
 
   useEffect(() => {
-    if (s.trackingMode !== "vlm" || s.vlmBehavior !== "agent") return;
+    if (
+      s.trackingMode !== "vlm" ||
+      s.vlmBehavior !== "guide" ||
+      (s.vlmGuidePromptChoice !== "compose" &&
+        s.vlmGuidePromptChoice !== "hybrid")
+    ) {
+      return;
+    }
     const textarea = vlmAgentActionRef.current;
     if (!textarea) return;
     let timer: number | null = null;
@@ -271,7 +289,12 @@ export function ControlPanel({
       if (timer !== null) window.clearTimeout(timer);
       observer.disconnect();
     };
-  }, [s.panelMinimized, s.trackingMode, s.vlmBehavior]);
+  }, [
+    s.panelMinimized,
+    s.trackingMode,
+    s.vlmBehavior,
+    s.vlmGuidePromptChoice,
+  ]);
 
   const setMatteColor = (value: string) => {
     const color = normalizeMatteColor(value);
@@ -512,9 +535,78 @@ export function ControlPanel({
   const workflowByPath = new Map(
     availableWorkflows.map((workflow) => [workflow.path, workflow]),
   );
-  const promptHasActiveSlot = promptPoolHasActiveSlot(s.pinnedPrompts);
-  const agentControlsPrompt =
-    s.trackingMode === "vlm" && s.vlmBehavior === "agent";
+  const usesUnweightedPromptPool =
+    s.trackingMode === "vlm" &&
+    s.vlmBehavior === "guide" &&
+    (s.vlmGuidePromptChoice === "select" ||
+      s.vlmGuidePromptChoice === "hybrid");
+  const composeControlsPrompt =
+    s.trackingMode === "vlm" &&
+    s.vlmBehavior === "guide" &&
+    s.vlmGuidePromptChoice === "compose";
+  const hybridCanWrite =
+    s.trackingMode === "vlm" &&
+    s.vlmBehavior === "guide" &&
+    s.vlmGuidePromptChoice === "hybrid";
+  const promptHasActiveSlot =
+    composeControlsPrompt || hybridCanWrite
+      ? true
+      : usesUnweightedPromptPool
+        ? promptPoolHasSelectableSlot(s.pinnedPrompts)
+        : promptPoolHasActiveSlot(s.pinnedPrompts);
+  const vlmPromptConfig: {
+    label: string;
+    key:
+      | "vlmPointPrompt"
+      | "vlmGuidePrompt"
+      | "vlmSelectPrompt"
+      | "vlmAgentPrompt"
+      | "vlmHybridPrompt";
+    value: string;
+  } =
+    s.vlmBehavior === "point"
+      ? {
+          label: "VLM prompt",
+          key: "vlmPointPrompt",
+          value: s.vlmPointPrompt,
+        }
+      : s.vlmGuidePromptChoice === "select"
+        ? {
+            label: "Select prompt",
+            key: "vlmSelectPrompt",
+            value: s.vlmSelectPrompt,
+          }
+        : s.vlmGuidePromptChoice === "compose"
+          ? {
+              label: "Compose prompt",
+              key: "vlmAgentPrompt",
+              value: s.vlmAgentPrompt,
+            }
+          : s.vlmGuidePromptChoice === "hybrid"
+            ? {
+                label: "Hybrid prompt",
+                key: "vlmHybridPrompt",
+                value: s.vlmHybridPrompt,
+              }
+            : {
+                label: "Guide prompt",
+                key: "vlmGuidePrompt",
+                value: s.vlmGuidePrompt,
+              };
+  const showsNextAction =
+    s.vlmBehavior === "guide" &&
+    (s.vlmGuidePromptChoice === "compose" ||
+      s.vlmGuidePromptChoice === "hybrid");
+  const nextActionText =
+    s.vlmAgentAction &&
+    "instruction" in s.vlmAgentAction &&
+    typeof s.vlmAgentAction.instruction === "string"
+      ? s.vlmAgentAction.instruction
+      : s.vlmAgentAction &&
+          "promptText" in s.vlmAgentAction &&
+          typeof s.vlmAgentAction.promptText === "string"
+        ? s.vlmAgentAction.promptText
+        : "";
   const llmModelOptions = (() => {
     const placeholder =
       llmModelsStatus === "loading" ? "Loading models..." : "Select model...";
@@ -660,6 +752,14 @@ export function ControlPanel({
               options={VLM_BEHAVIOR_OPTIONS}
               onChange={(v) => s.set("vlmBehavior", v)}
             />
+            {s.vlmBehavior === "guide" && (
+              <Dropdown<VLMGuidePromptChoice>
+                label="Choice"
+                value={s.vlmGuidePromptChoice}
+                options={VLM_GUIDE_PROMPT_CHOICE_OPTIONS}
+                onChange={(v) => s.set("vlmGuidePromptChoice", v)}
+              />
+            )}
             {s.vlmBehavior !== "point" && (
               <NumberInput
                 label="History"
@@ -683,51 +783,37 @@ export function ControlPanel({
                 className="gz-prompt-settings-textarea__label"
                 htmlFor="gz-vlm-tracking-prompt"
               >
-                {s.vlmBehavior === "agent"
-                  ? "Agent prompt"
-                  : s.vlmBehavior === "guide"
-                    ? "Guide prompt"
-                    : "VLM prompt"}
+                {vlmPromptConfig.label}
               </label>
               <textarea
                 id="gz-vlm-tracking-prompt"
                 ref={vlmPromptRef}
                 className="gz-prompt-settings-textarea__input"
-                value={
-                  s.vlmBehavior === "agent"
-                    ? s.vlmAgentPrompt
-                    : s.vlmBehavior === "guide"
-                      ? s.vlmGuidePrompt
-                      : s.vlmPointPrompt
-                }
+                value={vlmPromptConfig.value}
                 spellCheck={false}
                 rows={3}
                 style={{ height: s.vlmPointPromptHeight }}
-                onChange={(e) =>
-                  s.set(
-                    s.vlmBehavior === "agent"
-                      ? "vlmAgentPrompt"
-                      : s.vlmBehavior === "guide"
-                        ? "vlmGuidePrompt"
-                        : "vlmPointPrompt",
-                    e.target.value,
-                  )
-                }
+                onChange={(e) => s.set(vlmPromptConfig.key, e.target.value)}
                 onPointerUp={(e) => {
                   const height = e.currentTarget.offsetHeight;
                   if (height > 0) s.set("vlmPointPromptHeight", height);
                 }}
               />
-              {s.vlmBehavior === "agent" && (
+              {s.vlmBehavior === "guide" &&
+                (s.vlmGuidePromptChoice === "select" ||
+                  s.vlmGuidePromptChoice === "hybrid") &&
+                !vlmPromptConfig.value.includes("{prompt_pool}") && (
+                  <p className="gz-pool-warning">
+                    {vlmPromptConfig.label} requires the {"{prompt_pool}"}{" "}
+                    placeholder.
+                  </p>
+                )}
+              {showsNextAction && (
                 <textarea
                   ref={vlmAgentActionRef}
                   className="gz-prompt-slot__derived"
-                  aria-label="Next Agent action"
-                  value={
-                    s.vlmAgentAction && "instruction" in s.vlmAgentAction
-                      ? s.vlmAgentAction.instruction
-                      : ""
-                  }
+                  aria-label="Next VLM action"
+                  value={nextActionText}
                   placeholder="Next action will appear here..."
                   readOnly
                   rows={2}
@@ -782,7 +868,7 @@ export function ControlPanel({
         title="Prompting"
         sectionKey="prompting"
         collapsible
-        disabled={agentControlsPrompt}
+        disabled={composeControlsPrompt}
         headerAction={
           <span
             className="gz-section__cog"
@@ -826,6 +912,7 @@ export function ControlPanel({
             anyEnhancing={enhancingSlotIndex !== null}
             autoEnhanceMode={promptSlotAutoEnhanceMode(slot)}
             visionEnabled={promptSlotVisionEnabled(slot)}
+            hideWeight={usesUnweightedPromptPool}
             onFocus={() => setActiveSlotIndex(index)}
             onTextChange={(text) =>
               s.set(
@@ -971,9 +1058,11 @@ export function ControlPanel({
         >
           + Add prompt slot
         </Button>
-        {!promptHasActiveSlot && !agentControlsPrompt && (
+        {!promptHasActiveSlot && !composeControlsPrompt && (
           <p className="gz-pool-warning">
-            Unmute a prompt slot or give one a weight above 0 to generate.
+            {usesUnweightedPromptPool
+              ? "Unmute at least one prompt slot to generate."
+              : "Unmute a prompt slot or give one a weight above 0 to generate."}
           </p>
         )}
         {/* List / Template / LLM controls — revealed by the ⚙ in
@@ -1640,6 +1729,7 @@ function PromptSlotRow({
   anyEnhancing,
   autoEnhanceMode,
   visionEnabled,
+  hideWeight,
   onFocus,
   onTextChange,
   onWeightChange,
@@ -1659,6 +1749,7 @@ function PromptSlotRow({
   anyEnhancing: boolean;
   autoEnhanceMode: PromptAutoEnhanceMode;
   visionEnabled: boolean;
+  hideWeight: boolean;
   onFocus: () => void;
   onTextChange: (text: string) => void;
   onWeightChange: (weight: number) => void;
@@ -1743,37 +1834,51 @@ function PromptSlotRow({
         />
         <div className="gz-prompt-slot__controls">
           <div
-            className={`gz-weight-input gz-prompt-slot__weight-control${muted ? " gz-weight-input--muted" : ""}`}
+            className={
+              hideWeight
+                ? "gz-prompt-slot__select-mute-control"
+                : `gz-weight-input gz-prompt-slot__weight-control${muted ? " gz-weight-input--muted" : ""}`
+            }
           >
             <button
               className={`gz-weight-input__mute${muted ? " gz-weight-input__mute--active" : ""}`}
               type="button"
               aria-label={`${muted ? "Unmute" : "Mute"} prompt slot ${index + 1}`}
               aria-pressed={muted}
-              title={muted ? "Unmute prompt slot" : "Mute prompt slot"}
+              title={
+                hideWeight
+                  ? muted
+                    ? "Include in VLM selection"
+                    : "Exclude from VLM selection"
+                  : muted
+                    ? "Unmute prompt slot"
+                    : "Mute prompt slot"
+              }
               onClick={() => onMutedChange(!muted)}
             />
-            <input
-              className="gz-weight-input__field gz-prompt-slot__weight"
-              aria-label={`Prompt slot ${index + 1} weight`}
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={slot.weight}
-              disabled={muted}
-              title={
-                muted
-                  ? "Unmute this slot to change its weight"
-                  : "Relative slot weight"
-              }
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (raw === "") return;
-                const n = Number(raw);
-                if (Number.isFinite(n)) onWeightChange(n);
-              }}
-            />
+            {!hideWeight && (
+              <input
+                className="gz-weight-input__field gz-prompt-slot__weight"
+                aria-label={`Prompt slot ${index + 1} weight`}
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={slot.weight}
+                disabled={muted}
+                title={
+                  muted
+                    ? "Unmute this slot to change its weight"
+                    : "Relative slot weight"
+                }
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") return;
+                  const n = Number(raw);
+                  if (Number.isFinite(n)) onWeightChange(n);
+                }}
+              />
+            )}
           </div>
           <button
             className="gz-prompt-slot__enhance"

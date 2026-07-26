@@ -403,7 +403,7 @@ def test_llm_point_returns_502_on_transport_failure(
     assert "model not found" in resp.text
 
 
-def test_llm_agent_decision_uses_structured_output(
+def test_llm_compose_decision_uses_structured_output(
     client: TestClient,
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -425,6 +425,7 @@ def test_llm_agent_decision_uses_structured_output(
         data={
             "model": "gemma3:latest",
             "prompt": "Choose the next edit and return JSON.",
+            "behavior": "compose",
         },
         files={"image": ("canvas.png", b"canvas-bytes", "image/png")},
     )
@@ -452,11 +453,7 @@ def test_llm_agent_decision_accepts_normalized_coordinates(
     httpx_mock.add_response(
         method="POST",
         url="http://ollama.local:11434/api/chat",
-        json={
-            "message": {
-                "content": '{"x":0.25,"y":0.75,"instruction":"Add a doorway."}'
-            }
-        },
+        json={"message": {"content": '{"x":0.25,"y":0.75,"instruction":"Add a doorway."}'}},
     )
 
     resp = client.post(
@@ -519,8 +516,7 @@ def test_llm_agent_decision_resends_applied_action_history(
         json={
             "message": {
                 "content": (
-                    '{"x":200,"y":800,'
-                    '"instruction":"Extend the landscape into the lower left."}'
+                    '{"x":200,"y":800,"instruction":"Extend the landscape into the lower left."}'
                 )
             }
         },
@@ -555,16 +551,11 @@ def test_llm_agent_decision_resends_applied_action_history(
         {"role": "user", "content": prompt},
         {
             "role": "assistant",
-            "content": (
-                '{"x":500.0,"y":500.0,'
-                '"instruction":"Establish the central portrait."}'
-            ),
+            "content": ('{"x":500.0,"y":500.0,"instruction":"Establish the central portrait."}'),
         },
         {
             "role": "user",
-            "content": (
-                "The crop centered at that coordinate was generated and composited."
-            ),
+            "content": ("The crop centered at that coordinate was generated and composited."),
         },
         {
             "role": "user",
@@ -608,10 +599,7 @@ def test_llm_guide_decision_uses_coordinate_only_schema(
         url="http://ollama.local:11434/api/chat",
         json={
             "message": {
-                "content": (
-                    '{"x":640,"y":210,'
-                    '"instruction":"A legacy field that Guide ignores."}'
-                )
+                "content": ('{"x":640,"y":210,"instruction":"A legacy field that Guide ignores."}')
             }
         },
     )
@@ -664,6 +652,300 @@ def test_llm_guide_decision_resends_coordinate_history(
     assert request is not None
     sent = json.loads(request.read())
     assert sent["messages"][1]["content"] == '{"x":500.0,"y":500.0}'
+
+
+def test_llm_select_decision_uses_visible_prompt_ids(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={"message": {"content": '{"x":350,"y":725,"prompt_id":3}'}},
+    )
+
+    prompt = (
+        'Available prompts: [{"id":1,"prompt":"red"},{"id":3,"prompt":"blue"}]. '
+        'Return {"x":0,"y":0,"prompt_id":1}.'
+    )
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "qwen3-vl:8b",
+            "prompt": prompt,
+            "behavior": "select",
+            "prompt_ids": json.dumps([1, 3]),
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "x": pytest.approx(0.35),
+        "y": pytest.approx(0.725),
+        "prompt_id": 3,
+    }
+    request = httpx_mock.get_request()
+    assert request is not None
+    sent = json.loads(request.read())
+    assert sent["messages"][0]["content"] == prompt
+    assert set(sent["format"]["properties"]) == {"x", "y", "prompt_id"}
+    assert sent["format"]["properties"]["prompt_id"]["enum"] == [1, 3]
+
+
+def test_llm_select_decision_rejects_unknown_prompt_id(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    for path, response_key in (("chat", "message"), ("generate", "response")):
+        content = '{"x":500,"y":500,"prompt_id":9}'
+        body = (
+            {response_key: {"content": content}}
+            if response_key == "message"
+            else {response_key: content}
+        )
+        httpx_mock.add_response(
+            method="POST",
+            url=f"http://ollama.local:11434/api/{path}",
+            json=body,
+        )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "qwen3-vl:8b",
+            "prompt": "Choose prompt ID 1 or 2.",
+            "behavior": "select",
+            "prompt_ids": json.dumps([1, 2]),
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 422
+    assert "unknown prompt ID 9" in resp.text
+
+
+def test_llm_select_decision_resends_prompt_history(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={"message": {"content": '{"x":700,"y":300,"prompt_id":1}'}},
+    )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "gemma4:latest",
+            "prompt": "Choose the next coordinate and prompt.",
+            "behavior": "select",
+            "prompt_ids": json.dumps([1, 3]),
+            "history": json.dumps(
+                [
+                    {
+                        "x": 0.2,
+                        "y": 0.8,
+                        "prompt_id": 3,
+                        "prompt": "erase the strongest red shape",
+                    }
+                ]
+            ),
+        },
+        files={"image": ("canvas.png", b"latest-canvas", "image/png")},
+    )
+
+    assert resp.status_code == 200
+    request = httpx_mock.get_request()
+    assert request is not None
+    sent = json.loads(request.read())
+    assert sent["messages"][1]["content"] == ('{"x":200.0,"y":800.0,"prompt_id":3}')
+    assert "erase the strongest red shape" in sent["messages"][2]["content"]
+
+
+def test_llm_hybrid_decision_can_select_a_pool_prompt(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={
+            "message": {
+                "content": ('{"x":350,"y":725,"source":"pool","prompt_id":3,"instruction":""}')
+            }
+        },
+    )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "qwen3-vl:8b",
+            "prompt": "Select or write a prompt.",
+            "behavior": "hybrid",
+            "prompt_ids": json.dumps([1, 3]),
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "x": pytest.approx(0.35),
+        "y": pytest.approx(0.725),
+        "source": "pool",
+        "prompt_id": 3,
+        "instruction": "",
+    }
+    request = httpx_mock.get_request()
+    assert request is not None
+    sent = json.loads(request.read())
+    assert set(sent["format"]["properties"]) == {
+        "x",
+        "y",
+        "source",
+        "prompt_id",
+        "instruction",
+    }
+    assert sent["format"]["properties"]["prompt_id"]["enum"] == [0, 1, 3]
+
+
+def test_llm_hybrid_decision_can_write_without_pool_candidates(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={
+            "message": {
+                "content": (
+                    '{"x":600,"y":250,"source":"write","prompt_id":0,'
+                    '"instruction":"Extend the pale architecture into the open sky."}'
+                )
+            }
+        },
+    )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "qwen3-vl:8b",
+            "prompt": "Select or write a prompt.",
+            "behavior": "hybrid",
+            "prompt_ids": "[]",
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "x": pytest.approx(0.6),
+        "y": pytest.approx(0.25),
+        "source": "write",
+        "prompt_id": 0,
+        "instruction": "Extend the pale architecture into the open sky.",
+    }
+
+
+@pytest.mark.parametrize(
+    "decision, detail",
+    [
+        (
+            '{"x":500,"y":500,"source":"pool","prompt_id":9,"instruction":""}',
+            "unknown prompt ID 9",
+        ),
+        (
+            '{"x":500,"y":500,"source":"pool","prompt_id":1,"instruction":"Modify it."}',
+            "pool decision must return an empty instruction",
+        ),
+        (
+            '{"x":500,"y":500,"source":"write","prompt_id":1,"instruction":"Modify it."}',
+            "write decision must use prompt ID 0",
+        ),
+    ],
+)
+def test_llm_hybrid_decision_rejects_ambiguous_output(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+    decision: str,
+    detail: str,
+) -> None:
+    for path, response_key in (("chat", "message"), ("generate", "response")):
+        body = (
+            {response_key: {"content": decision}}
+            if response_key == "message"
+            else {response_key: decision}
+        )
+        httpx_mock.add_response(
+            method="POST",
+            url=f"http://ollama.local:11434/api/{path}",
+            json=body,
+        )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "qwen3-vl:8b",
+            "prompt": "Select or write a prompt.",
+            "behavior": "hybrid",
+            "prompt_ids": json.dumps([1, 3]),
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 422
+    assert detail in resp.text
+
+
+def test_llm_hybrid_decision_resends_source_and_applied_prompt_history(
+    client: TestClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    httpx_mock.add_response(
+        method="POST",
+        url="http://ollama.local:11434/api/chat",
+        json={
+            "message": {
+                "content": (
+                    '{"x":700,"y":300,"source":"write","prompt_id":0,'
+                    '"instruction":"Introduce a quiet horizon."}'
+                )
+            }
+        },
+    )
+
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "gemma4:latest",
+            "prompt": "Choose the next coordinate and prompt source.",
+            "behavior": "hybrid",
+            "prompt_ids": json.dumps([1, 3]),
+            "history": json.dumps(
+                [
+                    {
+                        "x": 0.2,
+                        "y": 0.8,
+                        "source": "pool",
+                        "prompt_id": 3,
+                        "instruction": "",
+                        "prompt": "erase the strongest red shape",
+                    }
+                ]
+            ),
+        },
+        files={"image": ("canvas.png", b"latest-canvas", "image/png")},
+    )
+
+    assert resp.status_code == 200
+    request = httpx_mock.get_request()
+    assert request is not None
+    sent = json.loads(request.read())
+    assert sent["messages"][1]["content"] == (
+        '{"x":200.0,"y":800.0,"source":"pool","prompt_id":3,"instruction":""}'
+    )
+    assert "erase the strongest red shape" in sent["messages"][2]["content"]
 
 
 def test_llm_enhance_calls_ollama_chat(

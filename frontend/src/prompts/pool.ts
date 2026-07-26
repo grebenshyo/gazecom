@@ -213,6 +213,21 @@ export function promptPoolHasActiveSlot(slots: PromptSlots): boolean {
   );
 }
 
+/** Select mode ignores weights: every unmuted slot is an eligible candidate. */
+export function promptPoolHasSelectableSlot(slots: PromptSlots): boolean {
+  return slots.some((slot) => !promptSlotMuted(slot));
+}
+
+/** Return Select-mode candidates while preserving their original slot indices. */
+export function selectablePromptSlots(
+  slots: PromptSlots,
+): Array<{ text: string; index: number }> {
+  return slots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot }) => !promptSlotMuted(slot))
+    .map(({ slot, index }) => ({ text: slot.text, index }));
+}
+
 /**
  * Weighted random pick over positive, unmuted slots. Empty text is intentionally
  * selectable so promptless workflows receive an empty string. Returns the original

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from base64 import b64encode
+from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
@@ -128,6 +129,65 @@ class VLMGuideHistoryItem(BaseModel):
 
 
 _GUIDE_HISTORY_ADAPTER = TypeAdapter(list[VLMGuideHistoryItem])
+
+
+class VLMSelectDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1000)
+    y: float = Field(ge=0, le=1000)
+    prompt_id: int
+
+
+class VLMSelectDecisionOut(BaseModel):
+    x: float
+    y: float
+    prompt_id: int
+
+
+class VLMSelectHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    prompt_id: int
+    prompt: str
+
+
+_SELECT_HISTORY_ADAPTER = TypeAdapter(list[VLMSelectHistoryItem])
+
+
+class VLMHybridDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1000)
+    y: float = Field(ge=0, le=1000)
+    source: Literal["pool", "write"]
+    prompt_id: int = Field(ge=0)
+    instruction: str
+
+
+class VLMHybridDecisionOut(BaseModel):
+    x: float
+    y: float
+    source: Literal["pool", "write"]
+    prompt_id: int
+    instruction: str
+
+
+class VLMHybridHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    source: Literal["pool", "write"]
+    prompt_id: int = Field(ge=0)
+    instruction: str
+    prompt: str
+
+
+_HYBRID_HISTORY_ADAPTER = TypeAdapter(list[VLMHybridHistoryItem])
+_PROMPT_IDS_ADAPTER = TypeAdapter(list[int])
 
 
 def _thinking_modes_for_model(item: dict[str, Any]) -> list[OllamaThinkingMode]:
@@ -324,6 +384,70 @@ def _validate_guide_decision(
     return VLMGuideDecisionOut(x=x, y=y), None
 
 
+def _validate_select_decision(
+    body: Any,
+    allowed_prompt_ids: set[int],
+) -> tuple[VLMSelectDecisionOut | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "unexpected non-object response"
+    text = _strip_model_output(_extract_ollama_text(body))
+    if not text:
+        text = _strip_model_output(_extract_ollama_thinking(body))
+    if not text:
+        return None, f"empty select decision ({_body_summary(body)})"
+    try:
+        decision = VLMSelectDecision.model_validate_json(text)
+    except ValidationError as e:
+        return None, f"invalid select decision ({_short_detail(str(e))})"
+    if decision.prompt_id not in allowed_prompt_ids:
+        return None, f"unknown prompt ID {decision.prompt_id}"
+
+    x, y = _normalize_coord(decision.x, decision.y)
+    return VLMSelectDecisionOut(
+        x=x,
+        y=y,
+        prompt_id=decision.prompt_id,
+    ), None
+
+
+def _validate_hybrid_decision(
+    body: Any,
+    allowed_prompt_ids: set[int],
+) -> tuple[VLMHybridDecisionOut | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "unexpected non-object response"
+    text = _strip_model_output(_extract_ollama_text(body))
+    if not text:
+        text = _strip_model_output(_extract_ollama_thinking(body))
+    if not text:
+        return None, f"empty hybrid decision ({_body_summary(body)})"
+    try:
+        decision = VLMHybridDecision.model_validate_json(text)
+    except ValidationError as e:
+        return None, f"invalid hybrid decision ({_short_detail(str(e))})"
+
+    instruction = decision.instruction.strip()
+    if decision.source == "pool":
+        if decision.prompt_id not in allowed_prompt_ids:
+            return None, f"unknown prompt ID {decision.prompt_id}"
+        if instruction:
+            return None, "pool decision must return an empty instruction"
+    else:
+        if decision.prompt_id != 0:
+            return None, "write decision must use prompt ID 0"
+        if not instruction:
+            return None, "write decision returned an empty instruction"
+
+    x, y = _normalize_coord(decision.x, decision.y)
+    return VLMHybridDecisionOut(
+        x=x,
+        y=y,
+        source=decision.source,
+        prompt_id=decision.prompt_id,
+        instruction=instruction,
+    ), None
+
+
 def _short_detail(text: str, max_len: int = 400) -> str:
     text = text.strip()
     if len(text) <= max_len:
@@ -352,7 +476,7 @@ def _parse_agent_history(raw: str) -> list[VLMAgentHistoryItem]:
     except ValidationError as e:
         raise HTTPException(
             400,
-            f"Guide history is invalid: {_short_detail(str(e))}",
+            f"Agent history is invalid: {_short_detail(str(e))}",
         ) from e
 
 
@@ -366,12 +490,54 @@ def _parse_guide_history(raw: str) -> list[VLMGuideHistoryItem]:
         ) from e
 
 
+def _parse_select_history(raw: str) -> list[VLMSelectHistoryItem]:
+    try:
+        return _SELECT_HISTORY_ADAPTER.validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            400,
+            f"Select history is invalid: {_short_detail(str(e))}",
+        ) from e
+
+
+def _parse_hybrid_history(raw: str) -> list[VLMHybridHistoryItem]:
+    try:
+        return _HYBRID_HISTORY_ADAPTER.validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            400,
+            f"Hybrid history is invalid: {_short_detail(str(e))}",
+        ) from e
+
+
+def _parse_prompt_ids(raw: str, *, allow_empty: bool = False) -> list[int]:
+    try:
+        prompt_ids = _PROMPT_IDS_ADAPTER.validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            400,
+            f"Select prompt IDs are invalid: {_short_detail(str(e))}",
+        ) from e
+    if not prompt_ids and not allow_empty:
+        raise HTTPException(400, "Select requires at least one prompt ID.")
+    if any(prompt_id < 1 for prompt_id in prompt_ids):
+        raise HTTPException(400, "Select prompt IDs must be positive integers.")
+    if len(prompt_ids) != len(set(prompt_ids)):
+        raise HTTPException(400, "Select prompt IDs must be unique.")
+    return prompt_ids
+
+
 def _decision_chat_messages(
     instruction: str,
-    history: list[VLMAgentHistoryItem] | list[VLMGuideHistoryItem],
+    history: (
+        list[VLMAgentHistoryItem]
+        | list[VLMGuideHistoryItem]
+        | list[VLMSelectHistoryItem]
+        | list[VLMHybridHistoryItem]
+    ),
     image_b64: str,
     *,
-    include_edit_instruction: bool,
+    behavior: Literal["agent", "compose", "guide", "select", "hybrid"],
 ) -> list[dict[str, Any]]:
     if not history:
         return [
@@ -390,7 +556,13 @@ def _decision_chat_messages(
             "x": round(action.x * 1000, 3),
             "y": round(action.y * 1000, 3),
         }
-        if include_edit_instruction and isinstance(action, VLMAgentHistoryItem):
+        if behavior in {"agent", "compose"} and isinstance(action, VLMAgentHistoryItem):
+            action_payload["instruction"] = action.instruction.strip()
+        elif behavior == "select" and isinstance(action, VLMSelectHistoryItem):
+            action_payload["prompt_id"] = action.prompt_id
+        elif behavior == "hybrid" and isinstance(action, VLMHybridHistoryItem):
+            action_payload["source"] = action.source
+            action_payload["prompt_id"] = action.prompt_id
             action_payload["instruction"] = action.instruction.strip()
         messages.append(
             {
@@ -398,15 +570,18 @@ def _decision_chat_messages(
                 "content": json.dumps(action_payload, separators=(",", ":")),
             }
         )
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "The crop centered at that coordinate was generated and "
-                    "composited."
-                ),
-            }
-        )
+        applied = "The crop centered at that coordinate was generated and composited."
+        if behavior == "select" and isinstance(action, VLMSelectHistoryItem):
+            applied = (
+                f"The crop was generated with prompt ID {action.prompt_id}: "
+                f"{json.dumps(action.prompt)}"
+            )
+        elif behavior == "hybrid" and isinstance(action, VLMHybridHistoryItem):
+            applied = (
+                f"The crop used the {action.source} source and was generated "
+                f"with this final prompt: {json.dumps(action.prompt)}"
+            )
+        messages.append({"role": "user", "content": applied})
     messages.append(
         {
             "role": "user",
@@ -709,10 +884,11 @@ async def decision(
     model: str = Form(min_length=1),
     prompt: str = Form(min_length=1),
     history: str = Form(default="[]"),
-    behavior: Literal["agent", "guide"] = Form(default="agent"),
+    behavior: Literal["agent", "compose", "guide", "select", "hybrid"] = Form(default="agent"),
+    prompt_ids: str = Form(default="[]"),
     think: OllamaThink | None = Form(default=None),
     settings: Settings = Depends(get_settings),
-) -> VLMAgentDecisionOut | VLMGuideDecisionOut:
+) -> VLMAgentDecisionOut | VLMGuideDecisionOut | VLMSelectDecisionOut | VLMHybridDecisionOut:
     instruction = prompt.strip()
     if not instruction:
         raise HTTPException(400, f"{behavior.title()} prompt is empty.")
@@ -722,14 +898,58 @@ async def decision(
 
     image_b64 = b64encode(image_bytes).decode("ascii")
     model_name = model.strip()
-    if behavior == "agent":
+    parsed_history: (
+        list[VLMAgentHistoryItem]
+        | list[VLMGuideHistoryItem]
+        | list[VLMSelectHistoryItem]
+        | list[VLMHybridHistoryItem]
+    )
+    validate_decision: Callable[
+        [Any],
+        tuple[
+            VLMAgentDecisionOut
+            | VLMGuideDecisionOut
+            | VLMSelectDecisionOut
+            | VLMHybridDecisionOut
+            | None,
+            str | None,
+        ],
+    ]
+    if behavior in {"agent", "compose"}:
         parsed_history = _parse_agent_history(history)
         output_schema = VLMAgentDecision.model_json_schema()
         validate_decision = _validate_agent_decision
-    else:
+    elif behavior == "guide":
         parsed_history = _parse_guide_history(history)
         output_schema = VLMGuideDecision.model_json_schema()
         validate_decision = _validate_guide_decision
+    elif behavior == "select":
+        parsed_history = _parse_select_history(history)
+        allowed_prompt_ids = _parse_prompt_ids(prompt_ids)
+        allowed_prompt_id_set = set(allowed_prompt_ids)
+        output_schema = VLMSelectDecision.model_json_schema()
+        output_schema["properties"]["prompt_id"]["enum"] = allowed_prompt_ids
+
+        def validate_select_decision(
+            body: Any,
+        ) -> tuple[VLMSelectDecisionOut | None, str | None]:
+            return _validate_select_decision(body, allowed_prompt_id_set)
+
+        validate_decision = validate_select_decision
+    else:
+        parsed_history = _parse_hybrid_history(history)
+        allowed_prompt_ids = _parse_prompt_ids(prompt_ids, allow_empty=True)
+        allowed_prompt_id_set = set(allowed_prompt_ids)
+        output_schema = VLMHybridDecision.model_json_schema()
+        output_schema["properties"]["prompt_id"]["enum"] = [0, *allowed_prompt_ids]
+
+        def validate_hybrid_decision(
+            body: Any,
+        ) -> tuple[VLMHybridDecisionOut | None, str | None]:
+            return _validate_hybrid_decision(body, allowed_prompt_id_set)
+
+        validate_decision = validate_hybrid_decision
+
     options = {
         "temperature": 0.1,
         "num_predict": OLLAMA_DESCRIBE_NUM_PREDICT,
@@ -739,7 +959,7 @@ async def decision(
         instruction,
         parsed_history,
         image_b64,
-        include_edit_instruction=behavior == "agent",
+        behavior=behavior,
     )
     chat_payload: dict[str, Any] = {
         "model": model_name,

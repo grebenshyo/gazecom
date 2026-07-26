@@ -440,6 +440,19 @@ body.gz-theme-dark .gz-section--key-view { --gz-section-accent: #bfd0e8; }
   height: 22px;
 }
 
+.gz-prompt-slot__select-mute-control {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+}
+
+.gz-prompt-slot__select-mute-control .gz-weight-input__mute {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+}
+
 .gz-prompt-slot__weight {
   flex: 1;
   width: 0;

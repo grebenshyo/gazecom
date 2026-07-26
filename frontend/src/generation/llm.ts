@@ -7,13 +7,19 @@
  */
 
 import {
-  agentDecisionFromImageRequest,
+  composeDecisionFromImageRequest,
   describeImageRequest,
   guideDecisionFromImageRequest,
+  hybridDecisionFromImageRequest,
+  selectDecisionFromImageRequest,
   enhancePromptRequest,
   pointFromImageRequest,
-  type VLMAgentDecision,
+  type VLMComposeDecision,
   type VLMGuideDecision,
+  type VLMHybridDecision,
+  type VLMHybridHistoryItem,
+  type VLMSelectDecision,
+  type VLMSelectHistoryItem,
   type VLMPoint,
   type OllamaThink,
 } from "./api";
@@ -98,19 +104,20 @@ export class OllamaVLMProvider {
   }
 
   /** Choose the next canvas location, with bounded retries handled by the pipeline. */
-  async decide(
+  async compose(
     image: Blob,
     prompt: string,
-    history: VLMAgentDecision[],
+    history: VLMComposeDecision[],
     signal?: AbortSignal,
-  ): Promise<VLMAgentDecision | null> {
-    return agentDecisionFromImageRequest(
+  ): Promise<VLMComposeDecision | null> {
+    return composeDecisionFromImageRequest(
       {
         image,
         imageName: "vision_canvas.png",
         prompt,
         model: this.model,
         history,
+        behavior: "compose",
         think: this.think,
       },
       signal,
@@ -131,6 +138,50 @@ export class OllamaVLMProvider {
         model: this.model,
         history,
         behavior: "guide",
+        think: this.think,
+      },
+      signal,
+    );
+  }
+
+  async select(
+    image: Blob,
+    prompt: string,
+    promptIds: number[],
+    history: VLMSelectHistoryItem[],
+    signal?: AbortSignal,
+  ): Promise<VLMSelectDecision | null> {
+    return selectDecisionFromImageRequest(
+      {
+        image,
+        imageName: "vision_canvas.png",
+        prompt,
+        model: this.model,
+        history,
+        behavior: "select",
+        promptIds,
+        think: this.think,
+      },
+      signal,
+    );
+  }
+
+  async hybrid(
+    image: Blob,
+    prompt: string,
+    promptIds: number[],
+    history: VLMHybridHistoryItem[],
+    signal?: AbortSignal,
+  ): Promise<VLMHybridDecision | null> {
+    return hybridDecisionFromImageRequest(
+      {
+        image,
+        imageName: "vision_canvas.png",
+        prompt,
+        model: this.model,
+        history,
+        behavior: "hybrid",
+        promptIds,
         think: this.think,
       },
       signal,

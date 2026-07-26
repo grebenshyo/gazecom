@@ -20,7 +20,10 @@ import { downloadComposite } from "../canvas/downloadComposite";
 import { pullHandle } from "../canvas/pullHandle";
 import { bumpEpoch } from "../generation/epoch";
 import { activePool } from "../generation/workflows";
-import { promptPoolIsValid } from "../prompts";
+import {
+  promptPoolHasSelectableSlot,
+  promptPoolIsValid,
+} from "../prompts";
 import { useStore } from "../store";
 import "./MainActions.css";
 
@@ -38,6 +41,9 @@ export function MainActions({
   const trackingActive = useStore((s) => s.trackingActive);
   const trackingMode = useStore((s) => s.trackingMode);
   const vlmBehavior = useStore((s) => s.vlmBehavior);
+  const vlmGuidePromptChoice = useStore((s) => s.vlmGuidePromptChoice);
+  const vlmSelectPrompt = useStore((s) => s.vlmSelectPrompt);
+  const vlmHybridPrompt = useStore((s) => s.vlmHybridPrompt);
   const generationInProgress = useStore((s) => s.generationInProgress);
   const compositeHasCanvas = useStore((s) => s.compositeHasCanvas);
   const iterativeMode = useStore((s) => s.iterativeMode);
@@ -52,13 +58,30 @@ export function MainActions({
   const poolEmpty = Object.keys(pinnedWorkflows).length === 0;
   const hasActiveWorkflow =
     Object.keys(activePool(pinnedWorkflows, mutedWorkflows)).length > 0;
-  const agentSelected =
-    trackingMode === "vlm" && vlmBehavior === "agent";
+  const guideSelectsPrompt =
+    trackingMode === "vlm" &&
+    vlmBehavior === "guide" &&
+    vlmGuidePromptChoice === "select";
+  const guideComposesPrompt =
+    trackingMode === "vlm" &&
+    vlmBehavior === "guide" &&
+    vlmGuidePromptChoice === "compose";
+  const guideUsesHybridPrompt =
+    trackingMode === "vlm" &&
+    vlmBehavior === "guide" &&
+    vlmGuidePromptChoice === "hybrid";
   const canvasVlmSelected =
-    trackingMode === "vlm" && vlmBehavior !== "point";
+    trackingMode === "vlm" && vlmBehavior === "guide";
   const canvasVlmReady = !canvasVlmSelected || trackingActive;
+  const poolTemplateReady =
+    (!guideSelectsPrompt || vlmSelectPrompt.includes("{prompt_pool}")) &&
+    (!guideUsesHybridPrompt || vlmHybridPrompt.includes("{prompt_pool}"));
   const promptPoolValid =
-    agentSelected || promptPoolIsValid(pinnedPrompts);
+    guideComposesPrompt ||
+    guideUsesHybridPrompt ||
+    (guideSelectsPrompt
+      ? promptPoolHasSelectableSlot(pinnedPrompts)
+      : promptPoolIsValid(pinnedPrompts));
 
   const handleGenerateClick = () => {
     if (isGenerating) {
@@ -140,13 +163,17 @@ export function MainActions({
       <Button
         variant="primary"
         onClick={handleGenerateClick}
-        // Both pools use relative weights normalized during selection. The
-        // only blocker is having no positive, unmuted entry to pick. Empty text
-        // is a valid prompt and is passed to the selected workflow unchanged.
+        // Rotate uses normalized relative weights. Select and Hybrid instead
+        // treat every unmuted prompt as eligible and hide, but preserve, its
+        // weight. Compose and Hybrid-written actions do not need the pool.
+        // Empty slot text remains valid and is passed through unchanged.
         // Stop remains clickable while a generation is running.
         disabled={
           !isGenerating &&
-          (!hasActiveWorkflow || !promptPoolValid || !canvasVlmReady)
+          (!hasActiveWorkflow ||
+            !promptPoolValid ||
+            !canvasVlmReady ||
+            !poolTemplateReady)
         }
         title={
           isGenerating
@@ -156,9 +183,13 @@ export function MainActions({
               : !hasActiveWorkflow
                 ? "Unmute a workflow or give one a weight above 0"
                 : !canvasVlmReady
-                  ? `Start VLM ${vlmBehavior === "agent" ? "Agent" : "Guide"} tracking first`
+                  ? "Start VLM Guide tracking first"
                 : !promptPoolValid
-                  ? "Unmute a prompt slot or give one a weight above 0"
+                  ? guideSelectsPrompt
+                    ? "Unmute at least one prompt slot for Guide Select"
+                    : "Unmute a prompt slot or give one a weight above 0"
+                  : !poolTemplateReady
+                    ? `Add {prompt_pool} to the ${guideUsesHybridPrompt ? "Hybrid" : "Select"} prompt`
                   : undefined
         }
       >

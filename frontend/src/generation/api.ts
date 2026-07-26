@@ -71,13 +71,13 @@ export interface VLMPointRequest {
   think?: OllamaThink;
 }
 
-export interface VLMAgentDecisionRequest {
+export interface VLMComposeDecisionRequest {
   image: Blob;
   imageName: string;
   prompt: string;
   model: string;
-  history: VLMAgentDecision[];
-  behavior?: "agent";
+  history: VLMComposeDecision[];
+  behavior: "compose";
   think?: OllamaThink;
 }
 
@@ -91,19 +91,60 @@ export interface VLMGuideDecisionRequest {
   think?: OllamaThink;
 }
 
+export interface VLMSelectDecisionRequest {
+  image: Blob;
+  imageName: string;
+  prompt: string;
+  model: string;
+  history: VLMSelectHistoryItem[];
+  behavior: "select";
+  promptIds: number[];
+  think?: OllamaThink;
+}
+
+export interface VLMHybridDecisionRequest {
+  image: Blob;
+  imageName: string;
+  prompt: string;
+  model: string;
+  history: VLMHybridHistoryItem[];
+  behavior: "hybrid";
+  promptIds: number[];
+  think?: OllamaThink;
+}
+
 /** Salient point normalized to [0, 1] over the submitted image. */
 export interface VLMPoint {
   x: number;
   y: number;
 }
 
-/** Next edit chosen by Agent, normalized over the submitted canvas. */
-export interface VLMAgentDecision extends VLMPoint {
+/** Newly composed edit chosen by the VLM over the submitted canvas. */
+export interface VLMComposeDecision extends VLMPoint {
   instruction: string;
 }
 
 /** Next canvas location chosen by Guide. */
 export type VLMGuideDecision = VLMPoint;
+
+/** Next canvas location and authored prompt chosen by Guide Select. */
+export interface VLMSelectDecision extends VLMPoint {
+  prompt_id: number;
+}
+
+export interface VLMSelectHistoryItem extends VLMSelectDecision {
+  prompt: string;
+}
+
+export interface VLMHybridDecision extends VLMPoint {
+  source: "pool" | "write";
+  prompt_id: number;
+  instruction: string;
+}
+
+export interface VLMHybridHistoryItem extends VLMHybridDecision {
+  prompt: string;
+}
 
 export type GenerateResponse =
   | { kind: "image"; blob: Blob; objectURL: string }
@@ -354,11 +395,11 @@ export async function pointFromImageRequest(
  * A model response that violates the structured contract is returned as null
  * (backend 422), allowing the generation pipeline to resubmit deliberately.
  */
-export async function agentDecisionFromImageRequest(
-  req: VLMAgentDecisionRequest,
+export async function composeDecisionFromImageRequest(
+  req: VLMComposeDecisionRequest,
   signal?: AbortSignal,
-): Promise<VLMAgentDecision | null> {
-  return canvasDecisionFromImageRequest<VLMAgentDecision>(req, signal);
+): Promise<VLMComposeDecision | null> {
+  return canvasDecisionFromImageRequest<VLMComposeDecision>(req, signal);
 }
 
 export async function guideDecisionFromImageRequest(
@@ -368,10 +409,32 @@ export async function guideDecisionFromImageRequest(
   return canvasDecisionFromImageRequest<VLMGuideDecision>(req, signal);
 }
 
+export async function selectDecisionFromImageRequest(
+  req: VLMSelectDecisionRequest,
+  signal?: AbortSignal,
+): Promise<VLMSelectDecision | null> {
+  return canvasDecisionFromImageRequest<VLMSelectDecision>(req, signal);
+}
+
+export async function hybridDecisionFromImageRequest(
+  req: VLMHybridDecisionRequest,
+  signal?: AbortSignal,
+): Promise<VLMHybridDecision | null> {
+  return canvasDecisionFromImageRequest<VLMHybridDecision>(req, signal);
+}
+
 async function canvasDecisionFromImageRequest<
-  T extends VLMAgentDecision | VLMGuideDecision,
+  T extends
+    | VLMComposeDecision
+    | VLMGuideDecision
+    | VLMSelectDecision
+    | VLMHybridDecision,
 >(
-  req: VLMAgentDecisionRequest | VLMGuideDecisionRequest,
+  req:
+    | VLMComposeDecisionRequest
+    | VLMGuideDecisionRequest
+    | VLMSelectDecisionRequest
+    | VLMHybridDecisionRequest,
   signal?: AbortSignal,
 ): Promise<T | null> {
   const fd = new FormData();
@@ -379,7 +442,10 @@ async function canvasDecisionFromImageRequest<
   fd.append("prompt", req.prompt);
   fd.append("model", req.model);
   fd.append("history", JSON.stringify(req.history));
-  fd.append("behavior", req.behavior ?? "agent");
+  fd.append("behavior", req.behavior);
+  if (req.behavior === "select" || req.behavior === "hybrid") {
+    fd.append("prompt_ids", JSON.stringify(req.promptIds));
+  }
   if (req.think !== undefined) fd.append("think", String(req.think));
 
   const resp = await fetch(`${API_BASE}/api/llm/decision`, {
@@ -392,9 +458,8 @@ async function canvasDecisionFromImageRequest<
   }
   if (!resp.ok) {
     const text = await responseMessage(resp);
-    const label = req.behavior === "guide" ? "guide" : "agent";
     throw new Error(
-      `VLM ${label} decision failed: HTTP ${resp.status}${text ? " — " + text : ""}`,
+      `VLM ${req.behavior} decision failed: HTTP ${resp.status}${text ? " — " + text : ""}`,
     );
   }
   return (await resp.json()) as T;

@@ -27,7 +27,7 @@ describe("useStore — actions", () => {
     expect(useStore.getState().steps).toBe(30);
   });
 
-  it("clears transient Agent decisions when its control context changes", async () => {
+  it("clears transient canvas decisions when VLM behavior changes", async () => {
     const { useStore } = await import("./index");
     useStore.getState().patch({
       vlmAgentAction: { x: 0.7, y: 0.2 },
@@ -37,10 +37,29 @@ describe("useStore — actions", () => {
       vlmAgentWorkspaceReady: true,
     });
 
-    useStore.getState().set("vlmBehavior", "agent");
+    useStore.getState().set("vlmBehavior", "guide");
 
     expect(useStore.getState()).toMatchObject({
-      vlmBehavior: "agent",
+      vlmBehavior: "guide",
+      vlmAgentAction: null,
+      vlmAgentHistory: [],
+      vlmAgentWorkspaceReady: false,
+    });
+  });
+
+  it("clears pending Guide context when prompt choice changes", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().patch({
+      vlmBehavior: "guide",
+      vlmAgentAction: { x: 0.4, y: 0.6 },
+      vlmAgentHistory: [{ x: 0.2, y: 0.8 }],
+      vlmAgentWorkspaceReady: true,
+    });
+
+    useStore.getState().set("vlmGuidePromptChoice", "select");
+
+    expect(useStore.getState()).toMatchObject({
+      vlmGuidePromptChoice: "select",
       vlmAgentAction: null,
       vlmAgentHistory: [],
       vlmAgentWorkspaceReady: false,
@@ -125,7 +144,9 @@ describe("useStore — actions", () => {
     const {
       DEFAULT_VLM_AGENT_PROMPT,
       DEFAULT_VLM_GUIDE_PROMPT,
+      DEFAULT_VLM_HYBRID_PROMPT,
       DEFAULT_VLM_POINT_PROMPT,
+      DEFAULT_VLM_SELECT_PROMPT,
       useStore,
     } = await import("./index");
     useStore.getState().set("trackingMode", "roam2");
@@ -135,11 +156,14 @@ describe("useStore — actions", () => {
       frameZoom: 40,
       autoCollapsePanels: true,
       cropBoxBorderWidth: 20,
-      vlmBehavior: "agent",
+      vlmBehavior: "guide",
+      vlmGuidePromptChoice: "hybrid",
       vlmScope: "canvas",
       vlmPointPrompt: "custom point prompt",
       vlmGuidePrompt: "custom guide prompt",
+      vlmSelectPrompt: "custom select prompt",
       vlmAgentPrompt: "custom agent prompt",
+      vlmHybridPrompt: "custom hybrid prompt",
       vlmPointPromptHeight: 180,
       vlmAgentActionHeight: 140,
       compositeMatteEnabled: true,
@@ -158,10 +182,13 @@ describe("useStore — actions", () => {
       pointSize: 50,
       pointJitter: 0,
       vlmBehavior: "point",
+      vlmGuidePromptChoice: "rotate",
       vlmScope: "frame",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
       vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
+      vlmSelectPrompt: DEFAULT_VLM_SELECT_PROMPT,
       vlmAgentPrompt: DEFAULT_VLM_AGENT_PROMPT,
+      vlmHybridPrompt: DEFAULT_VLM_HYBRID_PROMPT,
       vlmPointPromptHeight: 60,
       vlmAgentActionHeight: 60,
       compositeMatteEnabled: false,
@@ -368,10 +395,19 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.llmThinkingMode, '"thinking"');
     localStorage.setItem(StorageKeys.vlmThinkingMode, '"thinking"');
     localStorage.setItem(StorageKeys.vlmBehavior, '"agent"');
+    localStorage.setItem(StorageKeys.vlmGuidePromptChoice, '"select"');
     localStorage.setItem(StorageKeys.vlmAgentHistoryLimit, "8");
     localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
     localStorage.setItem(StorageKeys.vlmGuidePrompt, '"Choose a location."');
+    localStorage.setItem(
+      StorageKeys.vlmSelectPrompt,
+      '"Choose prompt {prompt_pool}."',
+    );
     localStorage.setItem(StorageKeys.vlmAgentPrompt, '"Choose an edit."');
+    localStorage.setItem(
+      StorageKeys.vlmHybridPrompt,
+      '"Choose or write from {prompt_pool}."',
+    );
     localStorage.setItem(StorageKeys.vlmAgentActionHeight, "96");
     localStorage.setItem(StorageKeys.llmEnhancePrompt, '"custom {prompt}"');
     localStorage.setItem(StorageKeys.compositeMatteEnabled, "true");
@@ -386,11 +422,22 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmModel).toBe("moondream:latest");
     expect(useStore.getState().llmThinkingMode).toBe("low");
     expect(useStore.getState().vlmThinkingMode).toBe("low");
-    expect(useStore.getState().vlmBehavior).toBe("agent");
+    expect(useStore.getState().vlmBehavior).toBe("guide");
+    expect(useStore.getState().vlmGuidePromptChoice).toBe("compose");
+    expect(localStorage.getItem(StorageKeys.vlmBehavior)).toBe('"guide"');
+    expect(localStorage.getItem(StorageKeys.vlmGuidePromptChoice)).toBe(
+      '"compose"',
+    );
     expect(useStore.getState().vlmAgentHistoryLimit).toBe(8);
     expect(useStore.getState().vlmScope).toBe("canvas");
     expect(useStore.getState().vlmGuidePrompt).toBe("Choose a location.");
+    expect(useStore.getState().vlmSelectPrompt).toBe(
+      "Choose prompt {prompt_pool}.",
+    );
     expect(useStore.getState().vlmAgentPrompt).toBe("Choose an edit.");
+    expect(useStore.getState().vlmHybridPrompt).toBe(
+      "Choose or write from {prompt_pool}.",
+    );
     expect(useStore.getState().vlmAgentActionHeight).toBe(96);
     expect(useStore.getState().llmEnhancePrompt).toBe("custom {prompt}");
     expect(useStore.getState().compositeMatteEnabled).toBe(true);

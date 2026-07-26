@@ -83,9 +83,12 @@ the product, distribution package, and command-line entry point use gazeCOM.
   (`/api/llm/enhance`, `/describe`, `/point`, `/decision`, `/models`). The
   models endpoint reports Ollama's installed tags, advertised capabilities,
   and family-derived thinking modes.
-  `/decision` accepts the current canvas plus behavior-specific history. Guide
-  requires structured `{x, y}` output; Agent requires
-  `{x, y, instruction}`. Neither substitutes a fallback decision.
+  `/decision` accepts the current canvas plus strategy-specific history. Guide
+  Rotate requires structured `{x, y}` output, Select requires
+  `{x, y, prompt_id}` constrained to the submitted candidate IDs, Compose
+  requires `{x, y, instruction}`, and Hybrid requires
+  `{x, y, source, prompt_id, instruction}` with a strictly valid pool or write
+  branch. None substitutes a fallback decision.
 
 ## Frontend (`frontend/src/`)
 
@@ -96,8 +99,9 @@ the product, distribution package, and command-line entry point use gazeCOM.
   `CompositeBounds.ts` (bounds/COM clamping), `PullTool.tsx` (1024² crop).
 - `trackers/` — seven sources behind one `Tracker` interface: WebGazer,
   Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (the vision
-  model reports a frame-local/canvas point, chooses the next Pull location in
-  Guide behavior, or chooses both location and instruction in Agent behavior;
+  model reports a frame-local/canvas point or chooses the next Pull location in
+  Guide behavior, where it can rotate, select, compose, or combine prompt
+  sources;
   `VLMTracker` renders the resulting local
   `store.vlmPoint` through the normal heatmap sink). Factory in
   `trackers/index.ts`.
@@ -226,20 +230,31 @@ model-specific effort controls only when the selected model advertises the
 values, GPT-OSS uses Low / Medium / High, and Gemma 4 also exposes Max. The
 selected value is sent explicitly with every relevant request.
 
-VLM Guide and Agent are orchestrated by `generation/pipeline.ts`. Before each
-generation they request a structured canvas decision and move Pull there. Guide
-then resolves generation text through the normal weighted prompt pool; Agent
-uses its returned instruction. After compositing the result, the pipeline
-appends the applied decision to bounded transient chat history, then requests
-and stores the next decision. The backend reconstructs Ollama `messages` from
-coordinates for Guide and coordinates plus instructions for Agent, attaching
-only the latest canvas image.
+VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
+requests a structured canvas decision and moves Pull there. Rotate resolves text
+through the normal weighted prompt pool. Select expands `{prompt_pool}` inside
+its persisted editable prompt, asks for a valid candidate ID, and executes that
+exact prompt snapshot through the selected slot's normal transforms. Compose
+uses a newly authored instruction. Hybrid makes one structured request that
+either selects an eligible prompt without rewriting it or writes a complete
+standalone prompt, optionally drawing on concepts exposed in the pool. Select
+and Hybrid ignore weights and use mute as candidate membership; hidden weights
+remain untouched. Hybrid may write even when no candidates are available.
+
+After compositing the result, the pipeline appends the applied decision to
+bounded transient chat history, then requests and stores the next decision. The
+backend reconstructs Ollama `messages` from coordinates for Rotate, coordinates
+plus applied prompts for Select, coordinates plus instructions for Compose, and
+source plus final applied prompt for Hybrid, attaching only the latest canvas
+image.
 `vlmAgentHistoryLimit` controls the retained coordinate count (20 by default, 0
 disables history).
 Bounded mode allocates the configured workspace once and centers existing
 content; unbounded mode sends the current composite so edge Pulls can expand it.
 Pending decisions, history, and workspace readiness are transient, while the
-editable Point, Guide, and Agent instruction templates persist independently.
+editable Point, Rotate, Select, Compose, and Hybrid instruction templates persist
+independently. Legacy `vlmAgent*` storage keys remain only to migrate existing
+Agent configurations to Guide Compose.
 
 ## Lineage
 

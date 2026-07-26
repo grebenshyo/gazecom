@@ -98,9 +98,10 @@ browser opens to gazeCOM. Then:
 Every source uses the same generation and composition pipeline, so modes can be
 switched without changing the selected workflow. Most sources feed the saliency
 heatmap and COM; canvas-scoped VLM tracking selects the next Pull frame directly.
-VLM Guide evaluates the complete canvas and steers that frame while the normal
-prompt pool controls what gets generated there. VLM Agent chooses both the frame
-and its image-editing instruction.
+VLM Guide evaluates the complete canvas and steers that frame. Its four prompt
+strategies can rotate through the weighted pool, select the authored prompt best
+suited to the chosen area, compose a new instruction, or choose between selecting
+and composing for each step.
 
 Camera processing stays in the browser; gazeCOM does not upload webcam video.
 Camera-based modes require permission, and some tracker scripts/models are
@@ -128,8 +129,11 @@ be muted without changing their weights, then unmuted to restore the same pool
 configuration. Workflow and prompt values are relative weights and are
 normalized automatically; neither pool needs to total 100. Muted and
 zero-weight entries are excluded before normalization, and generation requires
-at least one positive, unmuted entry in each pool. The exception is VLM Agent:
-its own instruction replaces the prompt pool while Agent tracking is active.
+at least one positive, unmuted entry in each pool. Guide **Select** and
+**Hybrid** ignore numeric prompt weights and expose every unmuted slot to the
+VLM; the weight fields are hidden without changing their stored values.
+**Compose** replaces the prompt pool with a new VLM instruction. Hybrid can
+either use one exposed slot or write a complete instruction of its own.
 Prompt text itself may be empty; an active blank slot sends an empty string to
 the selected workflow rather than inserting a fallback prompt.
 Prompt slots and new workflow pins start at weight `1`. The first workflow pin
@@ -157,27 +161,35 @@ prompting cycles between off (`○`), send
 without replacing the slot (`↗`), and self-evolving replacement (`↻`). The
 per-slot vision button describes the current frame before generation and
 displays the returned prompt separately.
-VLM tracking has three behaviors under **Tracking**. **Point** locates saliency
-in either the latest generated frame or the complete composite; Canvas scope
-centers Pull on the returned coordinate. **Guide** always evaluates the complete
-canvas and returns the next Pull coordinate. Its editable navigation prompt
-controls where the model looks, while the regular weighted prompt slots control
-what the selected workflow generates there. **Agent** also evaluates the complete
-canvas, but returns both the Pull coordinate and a generation instruction. That
-instruction appears under **Next action** and is passed directly to the workflow.
+VLM tracking has two behaviors under **Tracking**. **Point** locates saliency in
+either the latest generated frame or the complete composite; Canvas scope centers
+Pull on the returned coordinate. **Guide** always evaluates the complete canvas
+and returns the next Pull coordinate, with four choices for the generation text:
 
-With canvas limits enabled, Guide and Agent prepare the complete bounded workspace
-before their first decision and center any existing input inside it. Without
-limits, they evaluate the current composite; selecting an edge lets the next
-1024 × 1024 crop expand the canvas. They can begin from an input image or an
-empty canvas, and make the first decision before the first generation.
-After each successful patch, Guide retains previous coordinates, while Agent
-retains coordinates plus its applied instructions. Both use bounded Ollama chat
-history and submit only the latest canvas image. The behavior-specific
+- **Rotate** pairs the coordinate with the normal weighted prompt rotation.
+- **Select** presents every unmuted slot through the editable Select prompt's
+  `{prompt_pool}` placeholder and requires a valid prompt ID with the coordinate.
+- **Compose** returns both the coordinate and a newly authored generation
+  instruction, shown under **Next action** and passed directly to the workflow.
+- **Hybrid** either selects one pool prompt without rewriting it or writes a
+  complete prompt. Its editable instruction explicitly allows new writing to
+  adapt, combine, or expand pool concepts when that better suits the canvas.
+
+Selected pool slots still follow their normal direct, enhancement, evolution, or
+vision path. With canvas limits enabled, Guide prepares the complete bounded
+workspace before its first decision and centers any existing input inside it.
+Without limits, it evaluates the current composite; selecting an edge lets the
+next 1024 × 1024 crop expand the canvas. Guide can begin from an input image or
+an empty canvas and makes its first decision before the first generation.
+After each successful patch, Rotate retains previous coordinates, Select retains
+coordinates plus the prompts actually applied, Compose retains its authored
+instructions, and Hybrid retains its source and final applied prompt. All use
+bounded Ollama chat history and submit only the latest canvas image. The
+behavior-specific
 **history** control sets how many decisions remain (20 by default; 0 disables
 continuity). Pausing tracking keeps that conversation; clearing or replacing the
 canvas, changing the relevant prompt/model/behavior/history, or changing canvas
-limits starts a new one. Point, Guide, and Agent instructions are editable and
+limits starts a new one. Point and all four Guide instructions are editable and
 saved separately.
 
 ### Settings and portability

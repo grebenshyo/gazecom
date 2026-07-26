@@ -136,7 +136,7 @@ function HelpPanel({
               tracking to build a heatmap.
             </li>
             <li>
-              Enter a prompt and generate, or let VLM Agent supply the prompt.
+              Enter a prompt and generate, or let Guide Compose supply the prompt.
               Enable Iterative to repeat the cycle automatically.
             </li>
           </ol>
@@ -172,27 +172,31 @@ function HelpPanel({
             </li>
             <li>
               <strong>VLM Guide</strong> reads the complete canvas and chooses
-              the next Pull location. Its editable Guide prompt controls spatial
-              navigation; the normal weighted prompt slots control what gets
-              generated there.
+              the next Pull location. <strong>Rotate</strong> pairs it with the
+              normal weighted prompt rotation. <strong>Select</strong> asks the
+              VLM to choose one unmuted prompt slot together with the coordinate.
+              Its editable Select prompt must contain{" "}
+              <code>{"{prompt_pool}"}</code>, which expands visibly into the
+              numbered candidates sent to the model.
             </li>
             <li>
-              <strong>VLM Agent</strong> reads the complete canvas and chooses
-              both the next Pull location and the image edit to perform there.
-              Its instruction appears under Next action and replaces the prompt
-              pool while Agent tracking is active. With canvas limits on, Guide
-              and Agent prepare the full workspace before the first decision;
-              without limits, edge decisions
-              expand the current composite. Both can start from an image or a
-              blank canvas. Applied coordinates, and Agent instructions when
-              applicable, remain in Ollama chat history while only the latest
-              canvas image is submitted. Pausing tracking preserves that context;
-              changing the canvas, behavior prompt, model, behavior, history
-              limit, or canvas limits starts a new conversation. The history
-              control sets how many decisions are remembered; 0 disables
-              continuity.
+              Guide <strong>Compose</strong> chooses both the location and a new
+              image-editing instruction. <strong>Hybrid</strong> chooses per step
+              whether to select one pool prompt without rewriting it or write its
+              own complete prompt, which may adapt or combine ideas from the pool.
+              Compose and Hybrid-written prompts appear under Next action.
             </li>
           </ul>
+          <p>
+            With canvas limits on, Guide prepares the full workspace before its
+            first decision; without limits, edge decisions expand the current
+            composite. It can start from an image or a blank canvas. Applied
+            coordinates and prompts remain in bounded Ollama chat history while
+            only the latest canvas image is submitted. Pausing tracking preserves
+            that context; changing the canvas, model, behavior, choice, prompt,
+            history limit, or canvas limits starts a new conversation. Set
+            history to 0 to disable continuity.
+          </p>
           <p>
             Heatmap style is shared across modes. Size, jitter, speed, trail,
             and event-history settings are remembered per mode.
@@ -230,6 +234,12 @@ function HelpPanel({
             active blank slot sends an empty string to the workflow. New prompt
             slots start at weight 1.
           </p>
+          <p>
+            Guide Select and Hybrid deliberately ignore numeric prompt weights.
+            Their weight fields disappear and the remaining circle controls
+            whether each slot is available to the VLM. Stored weights are not
+            changed and return when Guide switches back to Rotate.
+          </p>
           <ul className="gz-guide-symbols">
             <li>
               <strong>✨</strong> runs the selected prompt tool once.
@@ -255,9 +265,10 @@ function HelpPanel({
           </p>
           <p>
             Prompt-slot vision is separate from VLM tracking. VLM Guide moves the
-            generation frame, then the selected prompt slot follows its normal
-            direct, enhancement, evolution, or vision path. VLM Agent instead
-            owns the generation prompt while it is active.
+            generation frame, then the rotated or VLM-selected prompt slot
+            follows its normal direct, enhancement, evolution, or vision path.
+            Compose and Hybrid-written actions instead supply the generation
+            prompt directly.
           </p>
           <p>
             The ↺ control in each panel heading restores only that section to
@@ -381,8 +392,8 @@ function HelpPanel({
             Advanced contains automatic download/clear intervals, canvas
             limits, the VLM model, and WebGazer calibration-cache controls. A
             model-specific effort menu appears beside a vision model that
-            supports thinking. VLM behavior, scope, Guide/Agent history,
-            editable behavior instructions, and Agent's next action are shown
+            supports thinking. VLM behavior, scope, Guide prompt choice, history,
+            editable instructions, and Compose/Hybrid's next action are shown
             below Mode when VLM is selected.
           </p>
           <p>
