@@ -84,8 +84,9 @@ export const DEFAULT_VLM_COMPOSE_PROMPT =
   "You control the next step of an image composition. Inspect the complete " +
   "current canvas. Choose the center coordinate of the next {crop_size} x " +
   "{crop_size} generation crop and describe the concrete visual change to " +
-  "make inside it. {canvas_limit} If the canvas is blank, initiate a " +
-  "composition yourself. Return only strict JSON using a 0-1000 coordinate " +
+  "make inside it. NEVER repeat the same x/y coordinates from a previous " +
+  "decision. {canvas_limit} If the canvas is blank, initiate a composition " +
+  "yourself. Return only strict JSON using a 0-1000 coordinate " +
   'grid: {"x": <0-1000>, "y": <0-1000>, "instruction": "<edit prompt>"}. ' +
   "The instruction is passed directly to the image model, so keep it concise " +
   "and actionable.";
@@ -95,6 +96,7 @@ export const DEFAULT_VLM_GUIDE_PROMPT =
   "canvas and choose the center coordinate of the next {crop_size} x " +
   "{crop_size} generation crop. Select the area that would benefit most from " +
   "the next edit, taking previous selected locations into account. " +
+  "NEVER repeat the same x/y coordinates from a previous decision. " +
   "{canvas_limit} Return only strict JSON using a 0-1000 coordinate grid: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
 
@@ -104,8 +106,9 @@ export const DEFAULT_VLM_SELECT_PROMPT =
   "Available prompts:\n{prompt_pool}\n\n" +
   "Choose the center coordinate of the next {crop_size} x {crop_size} " +
   "generation crop and select the prompt best suited to that area. Take " +
-  "previous selected locations and prompts into account. {canvas_limit} " +
-  "Return only strict JSON using a 0-1000 coordinate grid and one available " +
+  "previous selected locations and prompts into account. NEVER repeat the " +
+  "same x/y coordinates from a previous decision. {canvas_limit} Return only " +
+  "strict JSON using a 0-1000 coordinate grid and one available " +
   'prompt ID: {"x": <0-1000>, "y": <0-1000>, "prompt_id": <available ID>}. ' +
   "No explanation, no other text.";
 
@@ -114,8 +117,8 @@ export const DEFAULT_VLM_HYBRID_PROMPT =
   "{crop_size} x {crop_size} generation crop.\n\n" +
   "First choose the crop location. Return its center on a 0-1000 coordinate " +
   "grid: x runs from left to right and y runs from top to bottom. Do not " +
-  "automatically choose (500,500), and do not reuse an x/y pair from a " +
-  "previous decision.\n\n" +
+  "automatically choose (500,500). NEVER repeat the same x/y coordinates " +
+  "from a previous decision.\n\n" +
   "Available prompts:\n{prompt_pool}\n\n" +
   'Then choose source "pool" if an available prompt already fits that area. ' +
   "Return its ID and leave instruction empty. Choose source \"write\" if the " +
@@ -198,6 +201,8 @@ export interface AppState {
   vlmBehavior: VLMBehavior;
   /** Guide prompt strategy: rotate, select, compose, or combine both sources. */
   vlmGuidePromptChoice: VLMGuidePromptChoice;
+  /** Let Rotate use the active weighted prompt pool as placement context. */
+  vlmRotatePoolContext: boolean;
   /** Pending Guide decision used by the next generation only. Transient. */
   vlmGuideAction: VLMCanvasAction | null;
   /** Successfully applied Guide decisions for the current composition. */
@@ -477,6 +482,7 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.eventHistoryLength,
     StorageKeys.vlmBehavior,
     StorageKeys.vlmGuidePromptChoice,
+    StorageKeys.vlmRotatePoolContext,
     StorageKeys.vlmGuideHistoryLimit,
     StorageKeys.vlmScope,
     StorageKeys.vlmPointPrompt,
@@ -561,6 +567,10 @@ function loadInitial(): AppState {
     vlmPoint: null,
     vlmBehavior,
     vlmGuidePromptChoice,
+    vlmRotatePoolContext: readJSON<boolean>(
+      StorageKeys.vlmRotatePoolContext,
+      false,
+    ),
     vlmGuideAction: null,
     vlmGuideHistory: [],
     vlmGuideHistoryLimit: loadVlmGuideHistoryLimit(),
@@ -824,6 +834,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmThinkingMode", StorageKeys.vlmThinkingMode],
   ["vlmBehavior", StorageKeys.vlmBehavior],
   ["vlmGuidePromptChoice", StorageKeys.vlmGuidePromptChoice],
+  ["vlmRotatePoolContext", StorageKeys.vlmRotatePoolContext],
   ["vlmGuideHistoryLimit", StorageKeys.vlmGuideHistoryLimit],
   ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
@@ -889,6 +900,16 @@ export const useStore = create<AppState & AppActions>()(
       if (key === "vlmGuidePromptChoice") {
         set({
           vlmGuidePromptChoice: value as VLMGuidePromptChoice,
+          vlmPoint: null,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
+        });
+        return;
+      }
+      if (key === "vlmRotatePoolContext") {
+        set({
+          vlmRotatePoolContext: value as boolean,
           vlmPoint: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
@@ -1002,6 +1023,7 @@ export const useStore = create<AppState & AppActions>()(
               eventHistoryLength: defaults.eventHistoryLength,
               vlmBehavior: defaults.vlmBehavior,
               vlmGuidePromptChoice: defaults.vlmGuidePromptChoice,
+              vlmRotatePoolContext: defaults.vlmRotatePoolContext,
               vlmGuideHistoryLimit: defaults.vlmGuideHistoryLimit,
               vlmScope: defaults.vlmScope,
               vlmPointPrompt: defaults.vlmPointPrompt,

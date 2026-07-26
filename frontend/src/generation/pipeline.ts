@@ -699,6 +699,48 @@ export function renderGuidePrompt(
     .replaceAll("{canvas_limit}", canvasLimit);
 }
 
+export interface VLMRotatePromptContextEntry {
+  probability: number;
+  prompt: string;
+}
+
+export function buildRotatePromptContext(
+  slots: PromptSlots,
+): VLMRotatePromptContextEntry[] {
+  const active = slots.filter(
+    (slot) => !promptSlotMuted(slot) && slot.weight > 0,
+  );
+  const total = active.reduce((sum, slot) => sum + slot.weight, 0);
+  if (total <= 0) return [];
+
+  return active.map((slot) => ({
+    probability: Math.round((slot.weight / total) * 1_000_000) / 1_000_000,
+    prompt: slot.text,
+  }));
+}
+
+export function renderRotatePrompt(
+  template: string,
+  slots: PromptSlots,
+  includePoolContext: boolean,
+  canvasSize: { width: number; height: number },
+  bounds: { enabled: boolean; width: number; height: number },
+): string {
+  const prompt = renderGuidePrompt(template, canvasSize, bounds);
+  if (!includePoolContext) return prompt;
+
+  const context = JSON.stringify(buildRotatePromptContext(slots), null, 2);
+  return (
+    "The following active weighted prompts collectively shape the image. " +
+    "You do not choose a prompt; another process selects one after you choose " +
+    "the coordinate. Use this pool only as context for deciding which area is " +
+    "most relevant to work on next.\n\nPrompt pool:\n" +
+    context +
+    "\n\n" +
+    prompt
+  );
+}
+
 export interface VLMSelectPromptCandidate {
   id: number;
   slotIndex: number;
@@ -788,9 +830,18 @@ async function requestGuideDecision(
   if (choice === "select" && candidates.length === 0) {
     throw new Error("Unmute at least one prompt slot for Guide Select.");
   }
-  const instruction = usesPromptPool
-    ? renderPromptPoolTemplate(template, candidates, canvasSize, bounds)
-    : renderGuidePrompt(template, canvasSize, bounds);
+  const instruction =
+    choice === "rotate"
+      ? renderRotatePrompt(
+          template,
+          live.pinnedPrompts,
+          live.vlmRotatePoolContext,
+          canvasSize,
+          bounds,
+        )
+      : usesPromptPool
+        ? renderPromptPoolTemplate(template, candidates, canvasSize, bounds)
+        : renderGuidePrompt(template, canvasSize, bounds);
   const frame = await captureVisionCanvas({ source: canvas });
   const provider = new OllamaVLMProvider(
     live.vlmModel,

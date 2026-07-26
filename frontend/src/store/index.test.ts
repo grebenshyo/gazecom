@@ -21,6 +21,26 @@ describe("useStore — actions", () => {
     expect(useStore.getState().pinnedPrompts[0].weight).toBe(1);
   });
 
+  it("requires every Guide strategy to choose new coordinates", async () => {
+    const {
+      DEFAULT_VLM_COMPOSE_PROMPT,
+      DEFAULT_VLM_GUIDE_PROMPT,
+      DEFAULT_VLM_HYBRID_PROMPT,
+      DEFAULT_VLM_SELECT_PROMPT,
+    } = await import("./index");
+
+    for (const prompt of [
+      DEFAULT_VLM_GUIDE_PROMPT,
+      DEFAULT_VLM_SELECT_PROMPT,
+      DEFAULT_VLM_COMPOSE_PROMPT,
+      DEFAULT_VLM_HYBRID_PROMPT,
+    ]) {
+      expect(prompt).toContain(
+        "NEVER repeat the same x/y coordinates from a previous decision.",
+      );
+    }
+  });
+
   it("set() updates a single field", async () => {
     const { useStore } = await import("./index");
     useStore.getState().set("steps", 30);
@@ -60,6 +80,24 @@ describe("useStore — actions", () => {
 
     expect(useStore.getState()).toMatchObject({
       vlmGuidePromptChoice: "select",
+      vlmGuideAction: null,
+      vlmGuideHistory: [],
+      vlmGuideWorkspaceReady: false,
+    });
+  });
+
+  it("starts a new Guide conversation when Rotate pool context changes", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().patch({
+      vlmGuideAction: { x: 0.4, y: 0.6 },
+      vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
+      vlmGuideWorkspaceReady: true,
+    });
+
+    useStore.getState().set("vlmRotatePoolContext", true);
+
+    expect(useStore.getState()).toMatchObject({
+      vlmRotatePoolContext: true,
       vlmGuideAction: null,
       vlmGuideHistory: [],
       vlmGuideWorkspaceReady: false,
@@ -158,6 +196,7 @@ describe("useStore — actions", () => {
       cropBoxBorderWidth: 20,
       vlmBehavior: "guide",
       vlmGuidePromptChoice: "hybrid",
+      vlmRotatePoolContext: true,
       vlmScope: "canvas",
       vlmPointPrompt: "custom point prompt",
       vlmGuidePrompt: "custom guide prompt",
@@ -183,6 +222,7 @@ describe("useStore — actions", () => {
       pointJitter: 0,
       vlmBehavior: "point",
       vlmGuidePromptChoice: "rotate",
+      vlmRotatePoolContext: false,
       vlmScope: "frame",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
       vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
@@ -396,6 +436,7 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.vlmThinkingMode, '"low"');
     localStorage.setItem(StorageKeys.vlmBehavior, '"guide"');
     localStorage.setItem(StorageKeys.vlmGuidePromptChoice, '"compose"');
+    localStorage.setItem(StorageKeys.vlmRotatePoolContext, "true");
     localStorage.setItem(StorageKeys.vlmGuideHistoryLimit, "8");
     localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
     localStorage.setItem(StorageKeys.vlmGuidePrompt, '"Choose a location."');
@@ -424,6 +465,7 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmThinkingMode).toBe("low");
     expect(useStore.getState().vlmBehavior).toBe("guide");
     expect(useStore.getState().vlmGuidePromptChoice).toBe("compose");
+    expect(useStore.getState().vlmRotatePoolContext).toBe(true);
     expect(useStore.getState().vlmGuideHistoryLimit).toBe(8);
     expect(useStore.getState().vlmScope).toBe("canvas");
     expect(useStore.getState().vlmGuidePrompt).toBe("Choose a location.");

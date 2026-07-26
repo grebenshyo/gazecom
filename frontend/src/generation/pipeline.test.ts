@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRotatePromptContext,
   buildSelectPromptCandidates,
   inputKindFor,
   pullPositionForCanvasPoint,
   renderGuidePrompt,
   renderPromptPoolTemplate,
+  renderRotatePrompt,
   resolveInputCOM,
   resolvePromptTransforms,
 } from "./pipeline";
@@ -104,6 +106,57 @@ describe("renderGuidePrompt", () => {
 
     expect(prompt).toContain("choosing an edge lets the next crop expand it");
     expect(prompt).toContain("unboundedxunbounded");
+  });
+});
+
+describe("renderRotatePrompt", () => {
+  const slots = [
+    { text: "red structure", weight: 1, height: null },
+    { text: "muted detail", weight: 10, height: null, muted: true },
+    { text: "zero influence", weight: 0, height: null },
+    { text: "blue atmosphere", weight: 3, height: null },
+  ];
+
+  it("builds context from positive, unmuted slots with normalized weights", () => {
+    expect(buildRotatePromptContext(slots)).toEqual([
+      { probability: 0.25, prompt: "red structure" },
+      { probability: 0.75, prompt: "blue atmosphere" },
+    ]);
+  });
+
+  it("appends contextual prompts without turning them into choices", () => {
+    const prompt = renderRotatePrompt(
+      "Choose coordinates for a {crop_size} crop.",
+      slots,
+      true,
+      { width: 2048, height: 2048 },
+      { enabled: true, width: 2048, height: 2048 },
+    );
+
+    expect(prompt).toContain("Choose coordinates for a 1024 crop.");
+    expect(prompt).toContain("You do not choose a prompt");
+    expect(prompt).toContain('"probability": 0.25');
+    expect(prompt).toContain('"prompt": "red structure"');
+    expect(prompt).toContain('"probability": 0.75');
+    expect(prompt).toContain('"prompt": "blue atmosphere"');
+    expect(prompt).not.toContain("muted detail");
+    expect(prompt).not.toContain("zero influence");
+    expect(prompt).not.toContain('"id"');
+    expect(prompt.indexOf("Prompt pool:")).toBeLessThan(
+      prompt.indexOf("Choose coordinates"),
+    );
+  });
+
+  it("leaves the normal Guide prompt unchanged when context is disabled", () => {
+    expect(
+      renderRotatePrompt(
+        "Choose coordinates for a {crop_size} crop.",
+        slots,
+        false,
+        { width: 2048, height: 2048 },
+        { enabled: true, width: 2048, height: 2048 },
+      ),
+    ).toBe("Choose coordinates for a 1024 crop.");
   });
 });
 

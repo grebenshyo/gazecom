@@ -132,8 +132,10 @@ zero-weight entries are excluded before normalization, and generation requires
 at least one positive, unmuted entry in each pool. Guide **Select** and
 **Hybrid** ignore numeric prompt weights and expose every unmuted slot to the
 VLM; the weight fields are hidden without changing their stored values.
-**Compose** replaces the prompt pool with a new VLM instruction. Hybrid can
-either use one exposed slot or write a complete instruction of its own.
+Rotate can optionally expose its positive, unmuted slots and normalized
+probabilities as placement context without giving the VLM control over prompt
+selection. **Compose** replaces the prompt pool with a new VLM instruction.
+Hybrid can either use one exposed slot or write a complete instruction of its own.
 Prompt text itself may be empty; an active blank slot sends an empty string to
 the selected workflow rather than inserting a fallback prompt.
 Prompt slots and new workflow pins start at weight `1`. The first workflow pin
@@ -166,7 +168,9 @@ either the latest generated frame or the complete composite; Canvas scope center
 Pull on the returned coordinate. **Guide** always evaluates the complete canvas
 and returns the next Pull coordinate, with four choices for the generation text:
 
-- **Rotate** pairs the coordinate with the normal weighted prompt rotation.
+- **Rotate** pairs the coordinate with the normal weighted prompt rotation. Its
+  optional **Pool context** toggle lets Guide consider the active prompts and
+  normalized probabilities while still returning coordinates only.
 - **Select** presents every unmuted slot through the editable Select prompt's
   `{prompt_pool}` placeholder and requires a valid prompt ID with the coordinate.
 - **Compose** returns both the coordinate and a newly authored generation

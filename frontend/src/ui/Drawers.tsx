@@ -173,9 +173,11 @@ function HelpPanel({
             <li>
               <strong>VLM Guide</strong> reads the complete canvas and chooses
               the next Pull location. <strong>Rotate</strong> pairs it with the
-              normal weighted prompt rotation. <strong>Select</strong> asks the
-              VLM to choose one unmuted prompt slot together with the coordinate.
-              Its editable Select prompt must contain{" "}
+              normal weighted prompt rotation. Its optional{" "}
+              <strong>Pool context</strong> toggle lets Guide consider the
+              active prompts and normalized probabilities without choosing one.{" "}
+              <strong>Select</strong> asks the VLM to choose one unmuted prompt
+              slot together with the coordinate. Its editable Select prompt must contain{" "}
               <code>{"{prompt_pool}"}</code>, which expands visibly into the
               numbered candidates sent to the model.
             </li>

@@ -753,12 +753,21 @@ export function ControlPanel({
               onChange={(v) => s.set("vlmBehavior", v)}
             />
             {s.vlmBehavior === "guide" && (
-              <Dropdown<VLMGuidePromptChoice>
-                label="Choice"
-                value={s.vlmGuidePromptChoice}
-                options={VLM_GUIDE_PROMPT_CHOICE_OPTIONS}
-                onChange={(v) => s.set("vlmGuidePromptChoice", v)}
-              />
+              <>
+                <Dropdown<VLMGuidePromptChoice>
+                  label="Choice"
+                  value={s.vlmGuidePromptChoice}
+                  options={VLM_GUIDE_PROMPT_CHOICE_OPTIONS}
+                  onChange={(v) => s.set("vlmGuidePromptChoice", v)}
+                />
+                {s.vlmGuidePromptChoice === "rotate" && (
+                  <Toggle
+                    label="Pool context"
+                    checked={s.vlmRotatePoolContext}
+                    onChange={(v) => s.set("vlmRotatePoolContext", v)}
+                  />
+                )}
+              </>
             )}
             {s.vlmBehavior !== "point" && (
               <NumberInput

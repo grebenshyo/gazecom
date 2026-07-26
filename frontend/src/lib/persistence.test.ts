@@ -63,6 +63,7 @@ describe("settings files", () => {
     writeJSON(StorageKeys.vlmThinkingMode, "low");
     writeJSON(StorageKeys.vlmBehavior, "guide");
     writeJSON(StorageKeys.vlmGuidePromptChoice, "hybrid");
+    writeJSON(StorageKeys.vlmRotatePoolContext, true);
     writeJSON(StorageKeys.vlmGuideHistoryLimit, 12);
     writeJSON(StorageKeys.vlmScope, "canvas");
     writeJSON(StorageKeys.vlmGuidePrompt, "Choose the next location.");
@@ -89,6 +90,7 @@ describe("settings files", () => {
         vlmThinkingMode: "low",
         vlmBehavior: "guide",
         vlmGuidePromptChoice: "hybrid",
+        vlmRotatePoolContext: true,
         vlmGuideHistoryLimit: 12,
         vlmScope: "canvas",
         vlmGuidePrompt: "Choose the next location.",
@@ -163,6 +165,16 @@ describe("settings files", () => {
         settings: { vlmGuidePromptChoice: "weighted-select" },
       }),
     ).toThrow('Invalid value for setting "vlmGuidePromptChoice".');
+  });
+
+  it("rejects a non-boolean Rotate pool-context setting", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 2,
+        settings: { vlmRotatePoolContext: "yes" },
+      }),
+    ).toThrow('Invalid value for setting "vlmRotatePoolContext".');
   });
 
   it("rejects an invalid Guide history limit", () => {

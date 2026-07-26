@@ -47,6 +47,7 @@ export const StorageKeys = {
   vlmThinkingMode: "gazecom.vlmThinkingMode",
   vlmBehavior: "gazecom.vlmBehavior",
   vlmGuidePromptChoice: "gazecom.vlmGuidePromptChoice",
+  vlmRotatePoolContext: "gazecom.vlmRotatePoolContext",
   vlmGuideHistoryLimit: "gazecom.vlmGuideHistoryLimit",
   vlmScope: "gazecom.vlmScope",
   llmEnhancePrompt: "gazecom.llmEnhancePrompt",
@@ -219,6 +220,7 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "skipProviderErrors":
     case "compositeMatteEnabled":
     case "heatmapMatteEnabled":
+    case "vlmRotatePoolContext":
     case "panelMinimized":
     case "showWelcome":
     case "cropBoxVisible":

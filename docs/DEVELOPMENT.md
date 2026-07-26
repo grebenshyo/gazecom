@@ -232,14 +232,17 @@ selected value is sent explicitly with every relevant request.
 
 VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
 requests a structured canvas decision and moves Pull there. Rotate resolves text
-through the normal weighted prompt pool. Select expands `{prompt_pool}` inside
-its persisted editable prompt, asks for a valid candidate ID, and executes that
-exact prompt snapshot through the selected slot's normal transforms. Compose
-uses a newly authored instruction. Hybrid makes one structured request that
-either selects an eligible prompt without rewriting it or writes a complete
-standalone prompt, optionally drawing on concepts exposed in the pool. Select
-and Hybrid ignore weights and use mute as candidate membership; hidden weights
-remain untouched. Hybrid may write even when no candidates are available.
+through the normal weighted prompt pool. Its optional Pool context setting
+appends positive, unmuted prompt sources and normalized probabilities to the
+placement instruction without changing Rotate's coordinate-only response or
+downstream random selection. Select expands `{prompt_pool}` inside its persisted
+editable prompt, asks for a valid candidate ID, and executes that exact prompt
+snapshot through the selected slot's normal transforms. Compose uses a newly
+authored instruction. Hybrid makes one structured request that either selects an
+eligible prompt without rewriting it or writes a complete standalone prompt,
+optionally drawing on concepts exposed in the pool. Select and Hybrid ignore
+weights and use mute as candidate membership; hidden weights remain untouched.
+Hybrid may write even when no candidates are available.
 
 After compositing the result, the pipeline appends the applied decision to
 bounded transient chat history, then requests and stores the next decision. The
@@ -247,14 +250,13 @@ backend reconstructs Ollama `messages` from coordinates for Rotate, coordinates
 plus applied prompts for Select, coordinates plus instructions for Compose, and
 source plus final applied prompt for Hybrid, attaching only the latest canvas
 image.
-`vlmAgentHistoryLimit` controls the retained coordinate count (20 by default, 0
+`vlmGuideHistoryLimit` controls the retained decision count (20 by default, 0
 disables history).
 Bounded mode allocates the configured workspace once and centers existing
 content; unbounded mode sends the current composite so edge Pulls can expand it.
 Pending decisions, history, and workspace readiness are transient, while the
-editable Point, Rotate, Select, Compose, and Hybrid instruction templates persist
-independently. Legacy `vlmAgent*` storage keys remain only to migrate existing
-Agent configurations to Guide Compose.
+editable Point, Rotate, Select, Compose, and Hybrid instruction templates and
+Rotate's Pool context setting persist independently.
 
 ## Lineage
 
