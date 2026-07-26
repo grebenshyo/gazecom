@@ -7,10 +7,15 @@
  */
 
 import {
+  agentDecisionFromImageRequest,
   describeImageRequest,
+  guideDecisionFromImageRequest,
   enhancePromptRequest,
   pointFromImageRequest,
+  type VLMAgentDecision,
+  type VLMGuideDecision,
   type VLMPoint,
+  type OllamaThink,
 } from "./api";
 import type { LLMModel } from "../store";
 
@@ -27,7 +32,10 @@ export interface LLMProvider {
 }
 
 export class OllamaLLMProvider implements LLMProvider {
-  constructor(private readonly model: LLMModel) {}
+  constructor(
+    private readonly model: LLMModel,
+    private readonly think?: OllamaThink,
+  ) {}
 
   async enhance(
     prompt: string,
@@ -35,7 +43,7 @@ export class OllamaLLMProvider implements LLMProvider {
     signal?: AbortSignal,
   ): Promise<string> {
     const text = await enhancePromptRequest(
-      { prompt, model: this.model, template },
+      { prompt, model: this.model, template, think: this.think },
       signal,
     );
     return text.trim() || prompt;
@@ -43,7 +51,10 @@ export class OllamaLLMProvider implements LLMProvider {
 }
 
 export class OllamaVLMProvider {
-  constructor(private readonly model: LLMModel) {}
+  constructor(
+    private readonly model: LLMModel,
+    private readonly think?: OllamaThink,
+  ) {}
 
   async describe(
     image: Blob,
@@ -56,6 +67,7 @@ export class OllamaVLMProvider {
         imageName: "vision_input.png",
         prompt,
         model: this.model,
+        think: this.think,
       },
       signal,
     );
@@ -79,6 +91,47 @@ export class OllamaVLMProvider {
         imageName: "vision_input.png",
         prompt,
         model: this.model,
+        think: this.think,
+      },
+      signal,
+    );
+  }
+
+  /** Choose the next canvas location, with bounded retries handled by the pipeline. */
+  async decide(
+    image: Blob,
+    prompt: string,
+    history: VLMAgentDecision[],
+    signal?: AbortSignal,
+  ): Promise<VLMAgentDecision | null> {
+    return agentDecisionFromImageRequest(
+      {
+        image,
+        imageName: "vision_canvas.png",
+        prompt,
+        model: this.model,
+        history,
+        think: this.think,
+      },
+      signal,
+    );
+  }
+
+  async guide(
+    image: Blob,
+    prompt: string,
+    history: VLMGuideDecision[],
+    signal?: AbortSignal,
+  ): Promise<VLMGuideDecision | null> {
+    return guideDecisionFromImageRequest(
+      {
+        image,
+        imageName: "vision_canvas.png",
+        prompt,
+        model: this.model,
+        history,
+        behavior: "guide",
+        think: this.think,
       },
       signal,
     );

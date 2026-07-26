@@ -110,16 +110,14 @@ describe("pickFromPool", () => {
 });
 
 describe("addToPool", () => {
-  it("seeds an empty pool with a single 100-weight entry", () => {
+  it("seeds an empty pool with a unit-weight entry", () => {
     const next = addToPool({}, "default/A.json");
-    expect(next).toEqual({ "default/A.json": 100 });
+    expect(next).toEqual({ "default/A.json": 1 });
   });
 
-  it("adds a new pin at weight 0 when the pool is non-empty", () => {
-    // Existing relative selection is left untouched until the user assigns
-    // the new workflow a positive weight.
+  it("adds every new pin at unit weight", () => {
     const next = addToPool({ "default/A.json": 100 }, "default/B.json");
-    expect(next).toEqual({ "default/A.json": 100, "default/B.json": 0 });
+    expect(next).toEqual({ "default/A.json": 100, "default/B.json": 1 });
   });
 
   it("appends new pins in insertion order", () => {

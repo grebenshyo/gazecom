@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   inputKindFor,
   pullPositionForCanvasPoint,
+  renderAgentPrompt,
   resolveInputCOM,
   resolvePromptTransforms,
 } from "./pipeline";
@@ -76,6 +77,31 @@ describe("pullPositionForCanvasPoint", () => {
         { width: 1024, height: 1024 },
       ),
     ).toEqual({ x: -512, y: 512 });
+  });
+});
+
+describe("renderAgentPrompt", () => {
+  it("describes a bounded workspace with live dimensions", () => {
+    expect(
+      renderAgentPrompt(
+        "Crop {crop_size}; canvas {canvas_width}x{canvas_height}. {canvas_limit}",
+        { width: 2048, height: 1536 },
+        { enabled: true, width: 2048, height: 1536 },
+      ),
+    ).toBe(
+      "Crop 1024; canvas 2048x1536. The workspace is limited to 2048 x 1536 pixels; content outside it is clipped.",
+    );
+  });
+
+  it("explains edge expansion when the canvas is unbounded", () => {
+    const prompt = renderAgentPrompt(
+      "{canvas_limit} {max_width}x{max_height}",
+      { width: 1024, height: 1024 },
+      { enabled: false, width: 2048, height: 2048 },
+    );
+
+    expect(prompt).toContain("choosing an edge lets the next crop expand it");
+    expect(prompt).toContain("unboundedxunbounded");
   });
 });
 

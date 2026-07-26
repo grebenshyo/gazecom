@@ -19,6 +19,7 @@ import {
   writeJSON,
   type StorageKey,
 } from "../lib/persistence";
+import type { OllamaThinkingMode } from "../generation/api";
 import {
   EMPTY_SLOT,
   promptSlotsForPersistence,
@@ -44,12 +45,15 @@ export type TrackingMode =
 
 export type CompositeFitTarget = "patch" | "composite";
 export type UIScale = 72 | 80 | 100;
+export type { OllamaThinkingMode } from "../generation/api";
+export type VLMBehavior = "point" | "guide" | "agent";
 export type VLMScope = "frame" | "canvas";
 
 export type LLMModel = string;
 export type ResettableSection =
   | "prompting"
   | "workflow"
+  | "tracking"
   | "settings"
   | "advanced"
   | "view";
@@ -59,6 +63,7 @@ export const DEFAULT_LLM_ENHANCE_PROMPT =
   '"{prompt}"\n\n' +
   "Return only the rewritten prompt, no explanation.\n" +
   "Keep it concise.";
+export const DEFAULT_VLM_AGENT_HISTORY_LIMIT = 20;
 
 // VLM-mode point instruction. Mirrors the backend's POINT_SYSTEM_PROMPT
 // (routes/llm.py) — sent verbatim on every /api/llm/point request so the two
@@ -69,6 +74,37 @@ export const DEFAULT_VLM_POINT_PROMPT =
   "point's coordinates as strict JSON on a 0-1000 grid, where (0,0) is the " +
   "top-left corner and (1000,1000) is the bottom-right corner: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
+
+export const DEFAULT_VLM_AGENT_PROMPT =
+  "You control the next step of an image composition. Inspect the complete " +
+  "current canvas. Choose the center coordinate of the next {crop_size} x " +
+  "{crop_size} generation crop and describe the concrete visual change to " +
+  "make inside it. {canvas_limit} If the canvas is blank, initiate a " +
+  "composition yourself. Return only strict JSON using a 0-1000 coordinate " +
+  'grid: {"x": <0-1000>, "y": <0-1000>, "instruction": "<edit prompt>"}. ' +
+  "The instruction is passed directly to the image model, so keep it concise " +
+  "and actionable.";
+
+export const DEFAULT_VLM_GUIDE_PROMPT =
+  "Guide the next step of an image composition. Inspect the complete current " +
+  "canvas and choose the center coordinate of the next {crop_size} x " +
+  "{crop_size} generation crop. Select the area that would benefit most from " +
+  "the next edit, taking previous selected locations into account. " +
+  "{canvas_limit} Return only strict JSON using a 0-1000 coordinate grid: " +
+  '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
+
+export interface VLMAgentAction {
+  x: number;
+  y: number;
+  instruction: string;
+}
+
+export interface VLMGuideAction {
+  x: number;
+  y: number;
+}
+
+export type VLMCanvasAction = VLMAgentAction | VLMGuideAction;
 
 export interface PatchBox {
   x: number;
@@ -93,6 +129,16 @@ export interface AppState {
    * because that point is now centered in the pulled frame. Transient.
    */
   vlmPoint: { x: number; y: number } | null;
+  /** VLM tracking policy: locate saliency, or guide the next Pull location. */
+  vlmBehavior: VLMBehavior;
+  /** Pending Agent decision used by the next generation only. Transient. */
+  vlmAgentAction: VLMCanvasAction | null;
+  /** Successfully applied Agent decisions for the current composition. */
+  vlmAgentHistory: VLMCanvasAction[];
+  /** Maximum applied Agent decisions retained; zero disables continuity. */
+  vlmAgentHistoryLimit: number;
+  /** Whether bounded Agent mode has prepared its fixed workspace. Transient. */
+  vlmAgentWorkspaceReady: boolean;
   /**
    * Travel-speed multiplier for the synthetic roamers (roam / roam2).
    * 0.2 = the tuned default; the panel exposes a slider (roam modes only)
@@ -157,10 +203,10 @@ export interface AppState {
   /** List of filenames available under /images/. Refreshed on mount + upload. */
   availableImages: string[];
   /**
-   * Step count for the next generation. A picked workflow can declare its
-   * own default through {steps:N}; the user can override it between runs.
+   * Step count for the next generation. Null until a selected workflow
+   * declares its default through {steps:N}; the user can then override it.
    */
-  steps: number;
+  steps: number | null;
   /** True while a generation is in flight; blocks re-entrancy. */
   generationInProgress: boolean;
   /** True if the current composite is the result of one or more generations. */
@@ -253,14 +299,26 @@ export interface AppState {
    */
   pinnedPrompts: PromptSlots;
   llmModel: LLMModel;
+  llmThinkingMode: OllamaThinkingMode;
   vlmModel: LLMModel;
+  vlmThinkingMode: OllamaThinkingMode;
+  /** Ollama capabilities keyed by model name. Refreshed from the server. */
+  ollamaModelCapabilities: Record<string, string[]>;
+  /** Accepted Ollama thinking modes keyed by model name. Refreshed from the server. */
+  ollamaModelThinkingModes: Record<string, OllamaThinkingMode[]>;
   /** Image coordinate space used by VLM tracking. */
   vlmScope: VLMScope;
   llmEnhancePrompt: string;
   /** VLM-mode instruction for locating the salient point (Settings). */
   vlmPointPrompt: string;
+  /** VLM Guide navigation template (Settings). */
+  vlmGuidePrompt: string;
+  /** VLM Agent action template (Settings). */
+  vlmAgentPrompt: string;
   /** User-resized VLM instruction textarea height in CSS pixels. */
   vlmPointPromptHeight: number;
+  /** User-resized read-only Agent action height in CSS pixels. */
+  vlmAgentActionHeight: number;
 
   // ── Last-pick feedback (transient — not persisted) ───────────────
   /**
@@ -335,6 +393,7 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.promptList,
     StorageKeys.pinnedPrompts,
     StorageKeys.llmModel,
+    StorageKeys.llmThinkingMode,
     StorageKeys.llmEnhancePrompt,
   ],
   workflow: [
@@ -342,35 +401,43 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.mutedWorkflows,
     StorageKeys.steps,
   ],
-  settings: [
+  tracking: [
     StorageKeys.trackingMode,
-    StorageKeys.trackingProfiles,
     StorageKeys.eventHistoryLength,
+    StorageKeys.vlmBehavior,
+    StorageKeys.vlmAgentHistoryLimit,
+    StorageKeys.vlmScope,
+    StorageKeys.vlmPointPrompt,
+    StorageKeys.vlmGuidePrompt,
+    StorageKeys.vlmAgentPrompt,
+    StorageKeys.vlmPointPromptHeight,
+    StorageKeys.vlmAgentActionHeight,
+  ],
+  settings: [
     StorageKeys.heatmapStyle,
     StorageKeys.selectedImage,
+    StorageKeys.compositeMatteEnabled,
+    StorageKeys.heatmapMatteEnabled,
+    StorageKeys.matteEnabled,
+    StorageKeys.matteColor,
     StorageKeys.feedbackMode,
     StorageKeys.comMode,
     StorageKeys.compositeMode,
     StorageKeys.iterativeMode,
     StorageKeys.iterativeDelay,
-    StorageKeys.vlmScope,
-    StorageKeys.vlmPointPrompt,
-    StorageKeys.vlmPointPromptHeight,
   ],
   advanced: [
-    StorageKeys.compositeMatteEnabled,
-    StorageKeys.heatmapMatteEnabled,
-    StorageKeys.matteEnabled,
-    StorageKeys.matteColor,
     StorageKeys.autoDownloadEvery,
     StorageKeys.autoClearEvery,
     StorageKeys.boundsEnabled,
     StorageKeys.boundsWidth,
     StorageKeys.boundsHeight,
     StorageKeys.vlmModel,
+    StorageKeys.vlmThinkingMode,
     StorageKeys.calibCache,
   ],
   view: [
+    StorageKeys.frameZoom,
     StorageKeys.compositeFitEnabled,
     StorageKeys.compositeFitTarget,
     StorageKeys.cropBoxVisible,
@@ -406,6 +473,11 @@ function loadInitial(): AppState {
     trackingActive: false,
     trackerCalibrated: false,
     vlmPoint: null,
+    vlmBehavior: readJSON<VLMBehavior>(StorageKeys.vlmBehavior, "point"),
+    vlmAgentAction: null,
+    vlmAgentHistory: [],
+    vlmAgentHistoryLimit: loadVlmAgentHistoryLimit(),
+    vlmAgentWorkspaceReady: false,
     roamSpeed: trackingProfile.roamSpeed,
     trailLength: trackingProfile.trailLength,
     eventHistoryLength: readJSON<number>(
@@ -451,7 +523,7 @@ function loadInitial(): AppState {
     availableWorkflows: [],
     selectedImage: readJSON<string | null>(StorageKeys.selectedImage, null),
     availableImages: [],
-    steps: readJSON<number>(StorageKeys.steps, 10),
+    steps: readJSON<number | null>(StorageKeys.steps, null),
     generationInProgress: false,
     isComposited: false,
 
@@ -463,8 +535,8 @@ function loadInitial(): AppState {
     firstPatchPosition: null,
 
     promptList: readJSON<string>(StorageKeys.promptList, "Secession Trees Art"),
-    // Fresh installs get a single base slot with weight 100 (valid out of
-    // the box). Reads any legacy persisted value via
+    // Fresh installs get a single base slot with unit weight. Reads any
+    // legacy persisted value via
     // readJSON; if the shape is the old Record<string, number> it'll
     // deserialize as an array-ish object that fails the array check
     // and we fall back to the default. Single-user project, no
@@ -474,10 +546,14 @@ function loadInitial(): AppState {
       if (Array.isArray(raw) && raw.length > 0) {
         return promptSlotsForPersistence(raw as PromptSlots);
       }
-      return [{ ...EMPTY_SLOT, weight: 100 }];
+      return [{ ...EMPTY_SLOT, weight: 1 }];
     })(),
     llmModel: readJSON<LLMModel>(StorageKeys.llmModel, ""),
+    llmThinkingMode: loadOllamaThinkingMode(StorageKeys.llmThinkingMode),
     vlmModel: readJSON<LLMModel>(StorageKeys.vlmModel, ""),
+    vlmThinkingMode: loadOllamaThinkingMode(StorageKeys.vlmThinkingMode),
+    ollamaModelCapabilities: {},
+    ollamaModelThinkingModes: {},
     vlmScope: readJSON<VLMScope>(StorageKeys.vlmScope, "frame"),
     llmEnhancePrompt: readJSON<string>(
       StorageKeys.llmEnhancePrompt,
@@ -487,8 +563,20 @@ function loadInitial(): AppState {
       StorageKeys.vlmPointPrompt,
       DEFAULT_VLM_POINT_PROMPT,
     ),
+    vlmGuidePrompt: readJSON<string>(
+      StorageKeys.vlmGuidePrompt,
+      DEFAULT_VLM_GUIDE_PROMPT,
+    ),
+    vlmAgentPrompt: readJSON<string>(
+      StorageKeys.vlmAgentPrompt,
+      DEFAULT_VLM_AGENT_PROMPT,
+    ),
     vlmPointPromptHeight: readJSON<number>(
       StorageKeys.vlmPointPromptHeight,
+      60,
+    ),
+    vlmAgentActionHeight: readJSON<number>(
+      StorageKeys.vlmAgentActionHeight,
       60,
     ),
 
@@ -524,6 +612,38 @@ function loadInitial(): AppState {
   };
 }
 
+function loadOllamaThinkingMode(key: StorageKey): OllamaThinkingMode {
+  const stored = readJSON<unknown>(key, "off");
+  // Preserve the short-lived pre-release values from the first implementation.
+  if (
+    stored === "low" ||
+    stored === "medium" ||
+    stored === "high" ||
+    stored === "max" ||
+    stored === "on"
+  ) {
+    return stored;
+  }
+  if (stored === "thinking") return "low";
+  return "off";
+}
+
+function loadVlmAgentHistoryLimit(): number {
+  const stored = readJSON<unknown>(
+    StorageKeys.vlmAgentHistoryLimit,
+    DEFAULT_VLM_AGENT_HISTORY_LIMIT,
+  );
+  if (
+    typeof stored !== "number" ||
+    !Number.isInteger(stored) ||
+    stored < 0 ||
+    stored > 100
+  ) {
+    return DEFAULT_VLM_AGENT_HISTORY_LIMIT;
+  }
+  return stored;
+}
+
 function loadTrackingProfiles(): Record<TrackingMode, TrackingModeDefaults> {
   const stored = readJSON<
     Partial<Record<TrackingMode, Partial<TrackingModeDefaults>>>
@@ -532,6 +652,36 @@ function loadTrackingProfiles(): Record<TrackingMode, TrackingModeDefaults> {
     (Object.keys(TRACKING_MODE_DEFAULTS) as TrackingMode[]).map((mode) => [
       mode,
       { ...TRACKING_MODE_DEFAULTS[mode], ...stored[mode] },
+    ]),
+  ) as Record<TrackingMode, TrackingModeDefaults>;
+}
+
+function resetTrackingMotionProfiles(
+  profiles: Record<TrackingMode, TrackingModeDefaults>,
+): Record<TrackingMode, TrackingModeDefaults> {
+  return Object.fromEntries(
+    (Object.keys(TRACKING_MODE_DEFAULTS) as TrackingMode[]).map((mode) => [
+      mode,
+      {
+        ...profiles[mode],
+        roamSpeed: TRACKING_MODE_DEFAULTS[mode].roamSpeed,
+        trailLength: TRACKING_MODE_DEFAULTS[mode].trailLength,
+      },
+    ]),
+  ) as Record<TrackingMode, TrackingModeDefaults>;
+}
+
+function resetTrackingAppearanceProfiles(
+  profiles: Record<TrackingMode, TrackingModeDefaults>,
+): Record<TrackingMode, TrackingModeDefaults> {
+  return Object.fromEntries(
+    (Object.keys(TRACKING_MODE_DEFAULTS) as TrackingMode[]).map((mode) => [
+      mode,
+      {
+        ...profiles[mode],
+        pointSize: TRACKING_MODE_DEFAULTS[mode].pointSize,
+        pointJitter: TRACKING_MODE_DEFAULTS[mode].pointJitter,
+      },
     ]),
   ) as Record<TrackingMode, TrackingModeDefaults>;
 }
@@ -581,11 +731,18 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["steps", StorageKeys.steps],
   ["promptList", StorageKeys.promptList],
   ["llmModel", StorageKeys.llmModel],
+  ["llmThinkingMode", StorageKeys.llmThinkingMode],
   ["vlmModel", StorageKeys.vlmModel],
+  ["vlmThinkingMode", StorageKeys.vlmThinkingMode],
+  ["vlmBehavior", StorageKeys.vlmBehavior],
+  ["vlmAgentHistoryLimit", StorageKeys.vlmAgentHistoryLimit],
   ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
+  ["vlmGuidePrompt", StorageKeys.vlmGuidePrompt],
+  ["vlmAgentPrompt", StorageKeys.vlmAgentPrompt],
   ["vlmPointPromptHeight", StorageKeys.vlmPointPromptHeight],
+  ["vlmAgentActionHeight", StorageKeys.vlmAgentActionHeight],
   ["theme", StorageKeys.theme],
   ["panelMinimized", StorageKeys.panelMinimized],
   ["panelPosition", StorageKeys.panelPosition],
@@ -613,11 +770,63 @@ export const useStore = create<AppState & AppActions>()(
         set((state) => ({
           trackingMode: mode,
           ...state.trackingProfiles[mode],
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+          vlmAgentWorkspaceReady: false,
         }));
+        return;
+      }
+      if (key === "trackingActive") {
+        set({
+          trackingActive: value as boolean,
+          vlmPoint: null,
+          vlmAgentAction: null,
+        });
+        return;
+      }
+      if (key === "vlmBehavior") {
+        set({
+          vlmBehavior: value as VLMBehavior,
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+          vlmAgentWorkspaceReady: false,
+        });
+        return;
+      }
+      if (key === "vlmAgentHistoryLimit") {
+        set({
+          vlmAgentHistoryLimit: Math.min(
+            100,
+            Math.max(0, Math.floor(value as number)),
+          ),
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+        });
         return;
       }
       if (key === "vlmScope") {
         set({ vlmScope: value as VLMScope, vlmPoint: null });
+        return;
+      }
+      if (
+        key === "vlmModel" ||
+        key === "vlmGuidePrompt" ||
+        key === "vlmAgentPrompt" ||
+        key === "selectedImage" ||
+        key === "boundsEnabled" ||
+        key === "boundsWidth" ||
+        key === "boundsHeight"
+      ) {
+        set({
+          [key]: value,
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+          vlmAgentWorkspaceReady: false,
+        } as Partial<AppState>);
         return;
       }
       if (isTrackingProfileField(key)) {
@@ -646,6 +855,10 @@ export const useStore = create<AppState & AppActions>()(
         firstPatchPosition: null,
         isComposited: false,
         generationInProgress: false,
+        vlmPoint: null,
+        vlmAgentAction: null,
+        vlmAgentHistory: [],
+        vlmAgentWorkspaceReady: false,
       })),
     resetSection: (section) => {
       for (const key of SECTION_STORAGE_KEYS[section]) clearKey(key);
@@ -657,6 +870,7 @@ export const useStore = create<AppState & AppActions>()(
             promptList: defaults.promptList,
             pinnedPrompts: defaults.pinnedPrompts,
             llmModel: defaults.llmModel,
+            llmThinkingMode: defaults.llmThinkingMode,
             llmEnhancePrompt: defaults.llmEnhancePrompt,
             lastPickedPromptIndex: null,
           });
@@ -669,47 +883,80 @@ export const useStore = create<AppState & AppActions>()(
             lastPickedWorkflow: null,
           });
           break;
+        case "tracking":
+          set((state) => {
+            const trackingProfiles = resetTrackingMotionProfiles(
+              state.trackingProfiles,
+            );
+            const activeProfile = trackingProfiles[defaults.trackingMode];
+            return {
+              trackingMode: defaults.trackingMode,
+              trackingProfiles,
+              roamSpeed: activeProfile.roamSpeed,
+              trailLength: activeProfile.trailLength,
+              pointSize: activeProfile.pointSize,
+              pointJitter: activeProfile.pointJitter,
+              eventHistoryLength: defaults.eventHistoryLength,
+              vlmBehavior: defaults.vlmBehavior,
+              vlmAgentHistoryLimit: defaults.vlmAgentHistoryLimit,
+              vlmScope: defaults.vlmScope,
+              vlmPointPrompt: defaults.vlmPointPrompt,
+              vlmGuidePrompt: defaults.vlmGuidePrompt,
+              vlmAgentPrompt: defaults.vlmAgentPrompt,
+              vlmPointPromptHeight: defaults.vlmPointPromptHeight,
+              vlmAgentActionHeight: defaults.vlmAgentActionHeight,
+              trackingActive: false,
+              vlmPoint: null,
+              vlmAgentAction: null,
+              vlmAgentHistory: [],
+              vlmAgentWorkspaceReady: false,
+            };
+          });
+          break;
         case "settings":
-          set((state) => ({
-            trackingMode: defaults.trackingMode,
-            trackingProfiles: defaults.trackingProfiles,
-            roamSpeed: defaults.roamSpeed,
-            trailLength: defaults.trailLength,
-            eventHistoryLength: defaults.eventHistoryLength,
-            pointSize: defaults.pointSize,
-            pointJitter: defaults.pointJitter,
-            heatmapStyle: defaults.heatmapStyle,
-            selectedImage: state.availableImages[0] ?? defaults.selectedImage,
-            feedbackMode: defaults.feedbackMode,
-            comMode: defaults.comMode,
-            compositeMode: defaults.compositeMode,
-            iterativeMode: defaults.iterativeMode,
-            iterativeDelay: defaults.iterativeDelay,
-            vlmScope: defaults.vlmScope,
-            vlmPointPrompt: defaults.vlmPointPrompt,
-            vlmPointPromptHeight: defaults.vlmPointPromptHeight,
-            trackingActive: false,
-            iterativeRunning: false,
-            vlmPoint: null,
-          }));
+          set((state) => {
+            const trackingProfiles = resetTrackingAppearanceProfiles(
+              state.trackingProfiles,
+            );
+            const activeProfile = trackingProfiles[state.trackingMode];
+            return {
+              trackingProfiles,
+              pointSize: activeProfile.pointSize,
+              pointJitter: activeProfile.pointJitter,
+              heatmapStyle: defaults.heatmapStyle,
+              selectedImage:
+                state.availableImages[0] ?? defaults.selectedImage,
+              compositeMatteEnabled: defaults.compositeMatteEnabled,
+              heatmapMatteEnabled: defaults.heatmapMatteEnabled,
+              matteColor: defaults.matteColor,
+              feedbackMode: defaults.feedbackMode,
+              comMode: defaults.comMode,
+              compositeMode: defaults.compositeMode,
+              iterativeMode: defaults.iterativeMode,
+              iterativeDelay: defaults.iterativeDelay,
+              iterativeRunning: false,
+            };
+          });
           break;
         case "advanced":
           set({
-            compositeMatteEnabled: defaults.compositeMatteEnabled,
-            heatmapMatteEnabled: defaults.heatmapMatteEnabled,
-            matteColor: defaults.matteColor,
             autoDownloadEvery: defaults.autoDownloadEvery,
             autoClearEvery: defaults.autoClearEvery,
             boundsEnabled: defaults.boundsEnabled,
             boundsWidth: defaults.boundsWidth,
             boundsHeight: defaults.boundsHeight,
             vlmModel: defaults.vlmModel,
+            vlmThinkingMode: defaults.vlmThinkingMode,
             calibCache: defaults.calibCache,
             vlmPoint: null,
+            vlmAgentAction: null,
+            vlmAgentHistory: [],
+            vlmAgentWorkspaceReady: false,
           });
           break;
         case "view":
           set({
+            frameZoom: defaults.frameZoom,
             compositeFitEnabled: defaults.compositeFitEnabled,
             compositeFitTarget: defaults.compositeFitTarget,
             cropBoxVisible: defaults.cropBoxVisible,

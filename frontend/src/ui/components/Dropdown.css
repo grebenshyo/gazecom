@@ -6,7 +6,6 @@
 
 .gz-dropdown {
   --gz-dropdown-accent: var(--border-color);
-  --gz-dropdown-label-bg: rgba(0, 0, 0, 0.02);
   --gz-dropdown-label-fg: var(--text-color);
   display: flex;
   align-items: stretch;
@@ -29,13 +28,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--gz-dropdown-label-bg);
+  background: var(--control-label-bg);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-body.gz-theme-dark .gz-dropdown__label {
-  background: var(--gz-dropdown-label-bg);
 }
 
 .gz-dropdown:focus-within {

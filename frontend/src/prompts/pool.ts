@@ -12,7 +12,8 @@
  * Conventions mirror the workflow pool:
  *   - Weights are integers 0–100.
  *   - Weights are relative and normalized implicitly during selection.
- *   - The pool is valid when at least one nonblank, positive slot is unmuted.
+ *   - The pool is valid when at least one positive slot is unmuted.
+ *   - Empty text is a valid prompt and is sent to the workflow as an empty string.
  *   - All helpers are pure and preserve slot order.
  */
 
@@ -39,7 +40,7 @@ export type PromptAutoEnhanceMode = "off" | "send" | "evolve";
 /** Empty-pool sentinel for fresh-install initial state. */
 export const EMPTY_SLOT: PromptSlot = {
   text: "",
-  weight: 0,
+  weight: 1,
   muted: false,
   height: null,
   autoEnhanceMode: "off",
@@ -49,9 +50,8 @@ export const EMPTY_SLOT: PromptSlot = {
 };
 
 /**
- * Append a new empty slot (`text: ""`, `weight: 0`, `height: null`).
- * The new slot defaults to weight 0 so adding it doesn't affect selection
- * until the user deliberately gives it weight.
+ * Append a new empty slot (`text: ""`, `weight: 1`, `height: null`).
+ * Unit weight matches fresh prompt slots and newly pinned workflows.
  * Returns a new array; the input is not mutated.
  */
 export function addPromptSlot(slots: PromptSlots): PromptSlots {
@@ -202,21 +202,21 @@ export function setPromptSlotVisionEnabled(
   return next;
 }
 
-/** True when selection has at least one nonblank, positive, unmuted slot. */
+/** True when selection has at least one positive, unmuted slot. */
 export function promptPoolIsValid(slots: PromptSlots): boolean {
   return promptPoolHasActiveSlot(slots);
 }
 
 export function promptPoolHasActiveSlot(slots: PromptSlots): boolean {
   return slots.some(
-    (slot) =>
-      !promptSlotMuted(slot) && slot.weight > 0 && slot.text.trim().length > 0,
+    (slot) => !promptSlotMuted(slot) && slot.weight > 0,
   );
 }
 
 /**
- * Weighted random pick over nonblank, positive, unmuted slots. Returns the
- * original slot index so downstream transforms keep addressing the correct row.
+ * Weighted random pick over positive, unmuted slots. Empty text is intentionally
+ * selectable so promptless workflows receive an empty string. Returns the original
+ * slot index so downstream transforms keep addressing the correct row.
  */
 export function pickPromptSlot(
   slots: PromptSlots,
@@ -225,10 +225,7 @@ export function pickPromptSlot(
   const active = slots
     .map((slot, index) => ({ slot, index }))
     .filter(
-      ({ slot }) =>
-        !promptSlotMuted(slot) &&
-        slot.weight > 0 &&
-        slot.text.trim().length > 0,
+      ({ slot }) => !promptSlotMuted(slot) && slot.weight > 0,
     );
   if (active.length === 0) return null;
 

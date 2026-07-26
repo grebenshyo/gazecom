@@ -15,10 +15,67 @@ afterEach(() => {
 });
 
 describe("useStore — actions", () => {
+  it("starts the fresh prompt pool at unit weight", async () => {
+    const { useStore } = await import("./index");
+    expect(useStore.getState().pinnedPrompts).toHaveLength(1);
+    expect(useStore.getState().pinnedPrompts[0].weight).toBe(1);
+  });
+
   it("set() updates a single field", async () => {
     const { useStore } = await import("./index");
     useStore.getState().set("steps", 30);
     expect(useStore.getState().steps).toBe(30);
+  });
+
+  it("clears transient Agent decisions when its control context changes", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().patch({
+      vlmAgentAction: { x: 0.7, y: 0.2 },
+      vlmAgentHistory: [
+        { x: 0.5, y: 0.5 },
+      ],
+      vlmAgentWorkspaceReady: true,
+    });
+
+    useStore.getState().set("vlmBehavior", "agent");
+
+    expect(useStore.getState()).toMatchObject({
+      vlmBehavior: "agent",
+      vlmAgentAction: null,
+      vlmAgentHistory: [],
+      vlmAgentWorkspaceReady: false,
+    });
+  });
+
+  it("keeps Agent history when tracking pauses, but drops the pending action", async () => {
+    const { useStore } = await import("./index");
+    const history = [{ x: 0.5, y: 0.5 }];
+    useStore.getState().patch({
+      trackingActive: true,
+      vlmAgentAction: { x: 0.7, y: 0.2 },
+      vlmAgentHistory: history,
+    });
+
+    useStore.getState().set("trackingActive", false);
+
+    expect(useStore.getState().vlmAgentAction).toBeNull();
+    expect(useStore.getState().vlmAgentHistory).toEqual(history);
+  });
+
+  it("clears Agent history when its retained-action limit changes", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().patch({
+      vlmAgentAction: { x: 0.2, y: 0.8 },
+      vlmAgentHistory: [
+        { x: 0.5, y: 0.5 },
+      ],
+    });
+
+    useStore.getState().set("vlmAgentHistoryLimit", 0);
+
+    expect(useStore.getState().vlmAgentHistoryLimit).toBe(0);
+    expect(useStore.getState().vlmAgentAction).toBeNull();
+    expect(useStore.getState().vlmAgentHistory).toEqual([]);
   });
 
   it("patch() updates multiple fields atomically", async () => {
@@ -49,6 +106,7 @@ describe("useStore — actions", () => {
     const { DEFAULT_LLM_ENHANCE_PROMPT, useStore } = await import("./index");
     useStore.getState().patch({
       llmModel: "text-model",
+      llmThinkingMode: "low",
       vlmModel: "vision-model",
       llmEnhancePrompt: "custom wrapper",
     });
@@ -57,13 +115,19 @@ describe("useStore — actions", () => {
 
     expect(useStore.getState()).toMatchObject({
       llmModel: "",
+      llmThinkingMode: "off",
       vlmModel: "vision-model",
       llmEnhancePrompt: DEFAULT_LLM_ENHANCE_PROMPT,
     });
   });
 
-  it("resetSection() leaves global interface settings outside View reset", async () => {
-    const { DEFAULT_VLM_POINT_PROMPT, useStore } = await import("./index");
+  it("resetSection() keeps global interface settings outside View reset", async () => {
+    const {
+      DEFAULT_VLM_AGENT_PROMPT,
+      DEFAULT_VLM_GUIDE_PROMPT,
+      DEFAULT_VLM_POINT_PROMPT,
+      useStore,
+    } = await import("./index");
     useStore.getState().set("trackingMode", "roam2");
     useStore.getState().set("pointSize", 150);
     useStore.getState().patch({
@@ -71,11 +135,19 @@ describe("useStore — actions", () => {
       frameZoom: 40,
       autoCollapsePanels: true,
       cropBoxBorderWidth: 20,
+      vlmBehavior: "agent",
       vlmScope: "canvas",
       vlmPointPrompt: "custom point prompt",
+      vlmGuidePrompt: "custom guide prompt",
+      vlmAgentPrompt: "custom agent prompt",
       vlmPointPromptHeight: 180,
+      vlmAgentActionHeight: 140,
+      compositeMatteEnabled: true,
+      heatmapMatteEnabled: true,
+      matteColor: "#123abc",
     });
 
+    useStore.getState().resetSection("tracking");
     useStore.getState().resetSection("settings");
     useStore.getState().resetSection("view");
 
@@ -85,13 +157,50 @@ describe("useStore — actions", () => {
       trailLength: 300,
       pointSize: 50,
       pointJitter: 0,
+      vlmBehavior: "point",
       vlmScope: "frame",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
+      vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
+      vlmAgentPrompt: DEFAULT_VLM_AGENT_PROMPT,
       vlmPointPromptHeight: 60,
+      vlmAgentActionHeight: 60,
+      compositeMatteEnabled: false,
+      heatmapMatteEnabled: false,
+      matteColor: "#808080",
       uiScale: 100,
-      frameZoom: 40,
+      frameZoom: 85,
       autoCollapsePanels: true,
       cropBoxBorderWidth: 4,
+    });
+  });
+
+  it("resets Tracking and Settings without crossing profile ownership", async () => {
+    const { useStore } = await import("./index");
+    useStore.getState().set("trackingMode", "roam2");
+    useStore.getState().set("trailLength", 777);
+    useStore.getState().set("pointSize", 150);
+    useStore.getState().patch({
+      heatmapStyle: "spectral",
+      compositeMatteEnabled: true,
+    });
+
+    useStore.getState().resetSection("tracking");
+    useStore.getState().set("trackingMode", "roam2");
+
+    expect(useStore.getState()).toMatchObject({
+      trailLength: 100,
+      pointSize: 150,
+      heatmapStyle: "spectral",
+      compositeMatteEnabled: true,
+    });
+
+    useStore.getState().resetSection("settings");
+
+    expect(useStore.getState()).toMatchObject({
+      trailLength: 100,
+      pointSize: 10,
+      heatmapStyle: "moire",
+      compositeMatteEnabled: false,
     });
   });
 
@@ -105,6 +214,7 @@ describe("useStore — actions", () => {
       boundsEnabled: true,
       boundsWidth: 4096,
       vlmModel: "vision-model",
+      vlmThinkingMode: "low",
     });
 
     useStore.getState().resetSection("workflow");
@@ -113,11 +223,12 @@ describe("useStore — actions", () => {
     expect(useStore.getState()).toMatchObject({
       pinnedWorkflows: {},
       mutedWorkflows: [],
-      steps: 10,
-      compositeMatteEnabled: false,
+      steps: null,
+      compositeMatteEnabled: true,
       boundsEnabled: false,
       boundsWidth: 2048,
       vlmModel: "",
+      vlmThinkingMode: "off",
     });
   });
 });
@@ -127,6 +238,9 @@ describe("useStore — persistence", () => {
     const { useStore } = await import("./index");
     expect(useStore.getState().llmModel).toBe("");
     expect(useStore.getState().vlmModel).toBe("");
+    expect(useStore.getState().llmThinkingMode).toBe("off");
+    expect(useStore.getState().vlmThinkingMode).toBe("off");
+    expect(useStore.getState().vlmAgentHistoryLimit).toBe(20);
   });
 
   it("uses the tuned Roam profile on a fresh install", async () => {
@@ -251,7 +365,14 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.steps, "30");
     localStorage.setItem(StorageKeys.eventHistoryLength, "900");
     localStorage.setItem(StorageKeys.vlmModel, '"moondream:latest"');
+    localStorage.setItem(StorageKeys.llmThinkingMode, '"thinking"');
+    localStorage.setItem(StorageKeys.vlmThinkingMode, '"thinking"');
+    localStorage.setItem(StorageKeys.vlmBehavior, '"agent"');
+    localStorage.setItem(StorageKeys.vlmAgentHistoryLimit, "8");
     localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
+    localStorage.setItem(StorageKeys.vlmGuidePrompt, '"Choose a location."');
+    localStorage.setItem(StorageKeys.vlmAgentPrompt, '"Choose an edit."');
+    localStorage.setItem(StorageKeys.vlmAgentActionHeight, "96");
     localStorage.setItem(StorageKeys.llmEnhancePrompt, '"custom {prompt}"');
     localStorage.setItem(StorageKeys.compositeMatteEnabled, "true");
     localStorage.setItem(StorageKeys.heatmapMatteEnabled, "true");
@@ -263,7 +384,14 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().steps).toBe(30);
     expect(useStore.getState().eventHistoryLength).toBe(900);
     expect(useStore.getState().vlmModel).toBe("moondream:latest");
+    expect(useStore.getState().llmThinkingMode).toBe("low");
+    expect(useStore.getState().vlmThinkingMode).toBe("low");
+    expect(useStore.getState().vlmBehavior).toBe("agent");
+    expect(useStore.getState().vlmAgentHistoryLimit).toBe(8);
     expect(useStore.getState().vlmScope).toBe("canvas");
+    expect(useStore.getState().vlmGuidePrompt).toBe("Choose a location.");
+    expect(useStore.getState().vlmAgentPrompt).toBe("Choose an edit.");
+    expect(useStore.getState().vlmAgentActionHeight).toBe(96);
     expect(useStore.getState().llmEnhancePrompt).toBe("custom {prompt}");
     expect(useStore.getState().compositeMatteEnabled).toBe(true);
     expect(useStore.getState().heatmapMatteEnabled).toBe(true);

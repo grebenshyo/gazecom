@@ -42,8 +42,21 @@ import {
   setPromptSlotDerivedText,
   setPromptSlotText,
 } from "../prompts";
-import { useStore, type TrackingMode } from "../store";
-import { generateRequest, type VLMPoint } from "./api";
+import {
+  useStore,
+  type OllamaThinkingMode,
+  type TrackingMode,
+  type VLMBehavior,
+  type VLMCanvasAction,
+  type VLMAgentAction,
+} from "../store";
+import {
+  generateRequest,
+  type OllamaThink,
+  type VLMAgentDecision,
+  type VLMGuideDecision,
+  type VLMPoint,
+} from "./api";
 import {
   captureBasePatch,
   buildInpaintingMask,
@@ -84,6 +97,19 @@ export async function generateOnce(
 ): Promise<void> {
   const state = useStore.getState();
   if (state.generationInProgress) return;
+  const canvasVlmSelected =
+    state.trackingMode === "vlm" && state.vlmBehavior !== "point";
+  const canvasVlmActive =
+    canvasVlmSelected && state.trackingActive;
+  const agentActive =
+    state.trackingMode === "vlm" &&
+    state.vlmBehavior === "agent" &&
+    state.trackingActive;
+  if (canvasVlmSelected && !state.trackingActive) {
+    throw new Error(
+      `Start VLM ${state.vlmBehavior === "agent" ? "Agent" : "Guide"} tracking before generating.`,
+    );
+  }
   if (
     state.trackingMode === "vlm" &&
     state.trackingActive &&
@@ -107,7 +133,9 @@ export async function generateOnce(
   // The COM toggle is authoritative for every workflow. Edit and
   // in-/outpainting do not force COM implicitly; the flag alone decides.
   // This keeps placement and crop selection uniform across workflow types.
-  const useCOM = state.comMode;
+  // Guide and Agent are deliberate exceptions: their chosen coordinates are
+  // the COM input and their output must be composited for the next decision.
+  const useCOM = state.comMode || canvasVlmActive;
 
   // Capture the epoch at the start of this generation. If Pull or Clear
   // fires while we're awaiting the backend (or even after the response
@@ -128,10 +156,19 @@ export async function generateOnce(
   let generatedURL: string | null = null;
 
   try {
-    // 2. Resolve prompt.
+    // 2. Resolve canvas guidance, then the generation prompt.
+    //   Guide behavior chooses the next Pull location from the complete canvas,
+    //   but generation text remains under the normal weighted prompt pool.
+    //   Resolve the location first so the prompt is selected from fresh state
+    //   after the potentially slow VLM request.
+    if (canvasVlmActive) {
+      const ready = await ensureAgentAction(signal, myEpoch);
+      if (!ready) return;
+    }
+
     //   Pick a slot from the rotation pool, run its text through
     //   `replaceAllPlaceholders`, and use it. The Generate-button
-    //   disabled gate blocks pools without an active slot, while this
+    //   disabled gate blocks pools without a positive, unmuted slot, while this
     //   defensive check also catches a pool changed during iterative mode.
     //   Relative weights are normalized implicitly during selection. The
     //   picked index is pushed into the store so the panel can highlight it.
@@ -139,39 +176,58 @@ export async function generateOnce(
     //   for this request, while "evolve" also writes it back into the slot.
     //   Vision then uses that resulting text as its image instruction and
     //   returns the final generation prompt without further LLM processing.
-    const pickedPrompt = pickPromptSlot(state.pinnedPrompts);
-    if (!pickedPrompt) {
+    let prompt: string;
+    if (agentActive) {
       useStore.getState().set("lastPickedPromptIndex", null);
-      throw new Error(
-        "Enter text in an unmuted prompt slot with a weight above 0.",
+      const action = useStore.getState().vlmAgentAction;
+      if (!action || !("instruction" in action) || !action.instruction.trim()) {
+        throw new Error("VLM Agent did not provide an edit instruction.");
+      }
+      prompt = action.instruction.trim();
+    } else {
+      const promptState = useStore.getState();
+      const pickedPrompt = pickPromptSlot(promptState.pinnedPrompts);
+      if (!pickedPrompt) {
+        useStore.getState().set("lastPickedPromptIndex", null);
+        throw new Error(
+          "Unmute a prompt slot or give one a weight above 0.",
+        );
+      }
+      const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
+      const visionEnabled = promptSlotVisionEnabled(slot);
+      const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
+      prompt = replaceAllPlaceholders(pickedPrompt.text);
+      useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
+      prompt = await resolvePromptTransforms(
+        prompt,
+        visionEnabled,
+        (text) => maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
+        (text) =>
+          maybeDescribeVisionPrompt(
+            ctx,
+            promptState,
+            useCOM,
+            text,
+            pickedPrompt.index,
+            signal,
+          ),
+        autoEnhanceMode === "off"
+          ? undefined
+          : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
       );
+      syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
     }
-    const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
-    const visionEnabled = promptSlotVisionEnabled(slot);
-    const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
-    let prompt = replaceAllPlaceholders(pickedPrompt.text);
-    useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
-    prompt = await resolvePromptTransforms(
-      prompt,
-      visionEnabled,
-      (text) => maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
-      (text) =>
-        maybeDescribeVisionPrompt(
-          ctx,
-          state,
-          useCOM,
-          text,
-          pickedPrompt.index,
-          signal,
-        ),
-      autoEnhanceMode === "off"
-        ? undefined
-        : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
-    );
-    syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
 
     // 3. Build input image.
-    const inputBlob = await buildInput(ctx, state, workflowType, useCOM);
+    // Agent bootstrap may have created a bounded workspace and moved Pull,
+    // so its image geometry must be read after that asynchronous decision.
+    const generationState = useStore.getState();
+    const inputBlob = await buildInput(
+      ctx,
+      generationState,
+      workflowType,
+      useCOM,
+    );
 
     // 4. POST. `state.steps` would be stale here (snapshot taken before
     // syncStepsOnWorkflowChange may have updated it); re-read from the
@@ -183,7 +239,7 @@ export async function generateOnce(
         workflow,
         prompt,
         steps: useStore.getState().steps,
-        skipProviderErrors: state.skipProviderErrors,
+        skipProviderErrors: generationState.skipProviderErrors,
       },
       signal,
     );
@@ -203,7 +259,10 @@ export async function generateOnce(
     // abort (genuine cancel, throws AbortError, halts iterative loop).
     // `myEpoch` covers Pull/Clear discard (no abort, no halt, just drop
     // this one result so the user's focus-shift action takes priority).
-    await applyResult(
+    const completedAgentAction = canvasVlmActive
+      ? useStore.getState().vlmAgentAction
+      : null;
+    const applied = await applyResult(
       ctx,
       response.objectURL,
       workflowType,
@@ -211,11 +270,25 @@ export async function generateOnce(
       signal,
       myEpoch,
     );
+    if (!applied) return;
+    if (completedAgentAction) {
+      const live = useStore.getState();
+      const history =
+        live.vlmAgentHistoryLimit === 0
+          ? []
+          : [...live.vlmAgentHistory, completedAgentAction].slice(
+              -live.vlmAgentHistoryLimit,
+            );
+      live.patch({
+        vlmAgentAction: null,
+        vlmAgentHistory: history,
+      });
+    }
 
     // 6b. VLM mode: ask for the next point after applying the result. Frame
     //     scope stores a local COM; Canvas scope centers Pull on the returned
     //     composite coordinate and makes that crop the next working frame.
-    await maybeUpdateVlmPoint(response.objectURL, signal, myEpoch);
+    await maybeUpdateVlmTracking(response.objectURL, signal, myEpoch);
 
     // 7. Auto-cadenced side effects: download then clear. The counter
     //    is `patchesSinceClear` in the store — increments only on a
@@ -297,7 +370,11 @@ async function maybeAutoEnhancePrompt(
     throw new Error("Select an Ollama model in the prompt settings.");
   }
   const template = useStore.getState().llmEnhancePrompt;
-  const enhanced = await new OllamaLLMProvider(model).enhance(
+  const live = useStore.getState();
+  const enhanced = await new OllamaLLMProvider(
+    model,
+    ollamaThinkFor(model, live.llmThinkingMode),
+  ).enhance(
     prompt,
     template,
     signal,
@@ -353,7 +430,11 @@ async function maybeDescribeVisionPrompt(
     throw new Error("Select a Vision model under Advanced.");
   }
   const image = await buildVisionInput(ctx, state, useCOM);
-  const described = await new OllamaVLMProvider(model).describe(
+  const live = useStore.getState();
+  const described = await new OllamaVLMProvider(
+    model,
+    ollamaThinkFor(model, live.vlmThinkingMode),
+  ).describe(
     image,
     prompt,
     signal,
@@ -368,12 +449,284 @@ async function maybeDescribeVisionPrompt(
  * into a clean point.
  */
 const VLM_POINT_ATTEMPTS = 3;
+const VLM_AGENT_ATTEMPTS = 3;
+const MAX_AGENT_WORKSPACE_PIXELS = 4096 * 4096;
+
+function ollamaThinkFor(
+  model: string,
+  mode: OllamaThinkingMode,
+): OllamaThink | undefined {
+  const modes = useStore.getState().ollamaModelThinkingModes[model] ?? [];
+  if (!modes.includes(mode)) return undefined;
+  if (mode === "off") return false;
+  if (mode === "on") return true;
+  return mode;
+}
+
+async function ensureAgentAction(
+  signal?: AbortSignal,
+  myEpoch?: number,
+): Promise<boolean> {
+  if (useStore.getState().vlmAgentAction) return true;
+  await prepareAgentWorkspace();
+  if (signal?.aborted) {
+    throw new DOMException(
+      "Generation aborted before VLM canvas decision",
+      "AbortError",
+    );
+  }
+  if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return false;
+
+  const canvas = compositeStore.getCanvas();
+  if (!canvas) {
+    throw new Error("VLM Guide/Agent requires an active canvas.");
+  }
+  const behavior = useStore.getState().vlmBehavior;
+  if (behavior === "point") return false;
+  const decision = await requestAgentDecision(canvas, behavior, signal);
+  if (signal?.aborted) {
+    throw new DOMException(
+      "Generation aborted before VLM canvas decision",
+      "AbortError",
+    );
+  }
+  if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return false;
+  const live = useStore.getState();
+  if (
+    live.trackingMode !== "vlm" ||
+    live.vlmBehavior !== behavior ||
+    !live.trackingActive
+  ) {
+    return false;
+  }
+  await applyAgentDecision(
+    decision,
+    behavior,
+    {
+      width: canvas.width,
+      height: canvas.height,
+    },
+  );
+  return true;
+}
+
+async function prepareAgentWorkspace(): Promise<void> {
+  const state = useStore.getState();
+  const source = compositeStore.getCanvas();
+
+  if (!state.boundsEnabled) {
+    if (!source) {
+      const blank = document.createElement("canvas");
+      blank.width = blank.height = PULL_PATCH_SIZE;
+      await compositeStore.setCanvas(blank);
+      useStore.getState().patch({
+        baseImgPosition: {
+          x: 0,
+          y: 0,
+          width: PULL_PATCH_SIZE,
+          height: PULL_PATCH_SIZE,
+        },
+      });
+    }
+    useStore.getState().patch({
+      comMode: true,
+      compositeMode: true,
+      vlmAgentWorkspaceReady: true,
+    });
+    return;
+  }
+
+  const width = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsWidth));
+  const height = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsHeight));
+  if (width * height > MAX_AGENT_WORKSPACE_PIXELS) {
+    throw new Error(
+      "VLM Guide/Agent workspace is too large to allocate safely. " +
+        "Use canvas limits no larger than 4096 x 4096.",
+    );
+  }
+  if (
+    state.vlmAgentWorkspaceReady &&
+    source?.width === width &&
+    source.height === height
+  ) {
+    useStore.getState().patch({ comMode: true, compositeMode: true });
+    return;
+  }
+
+  const workspace = document.createElement("canvas");
+  workspace.width = width;
+  workspace.height = height;
+  const ctx = workspace.getContext("2d");
+  if (!ctx) {
+    throw new Error("VLM Guide/Agent could not create its bounded workspace.");
+  }
+
+  const offset = source
+    ? {
+        x: Math.round((width - source.width) / 2),
+        y: Math.round((height - source.height) / 2),
+      }
+    : {
+        x: Math.round((width - PULL_PATCH_SIZE) / 2),
+        y: Math.round((height - PULL_PATCH_SIZE) / 2),
+      };
+  if (source) ctx.drawImage(source, offset.x, offset.y);
+  await compositeStore.setCanvas(workspace);
+
+  const shiftBox = (box: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => ({
+    ...box,
+    x: box.x + offset.x,
+    y: box.y + offset.y,
+  });
+  const baseImgPosition =
+    state.baseImgPosition.width > 0 && state.baseImgPosition.height > 0
+      ? shiftBox(state.baseImgPosition)
+      : {
+          x: offset.x,
+          y: offset.y,
+          width: PULL_PATCH_SIZE,
+          height: PULL_PATCH_SIZE,
+        };
+  useStore.getState().patch({
+    baseImgPosition,
+    firstPatchPosition: state.firstPatchPosition
+      ? shiftBox(state.firstPatchPosition)
+      : null,
+    comMode: true,
+    compositeMode: true,
+    vlmAgentAction: null,
+    vlmAgentWorkspaceReady: true,
+  });
+}
+
+export function renderAgentPrompt(
+  template: string,
+  canvasSize: { width: number; height: number },
+  bounds: { enabled: boolean; width: number; height: number },
+): string {
+  const canvasLimit = bounds.enabled
+    ? `The workspace is limited to ${bounds.width} x ${bounds.height} pixels; ` +
+      "content outside it is clipped."
+    : "The canvas has no fixed outer boundary; choosing an edge lets the next " +
+      "crop expand it.";
+  return template
+    .replaceAll("{crop_size}", String(PULL_PATCH_SIZE))
+    .replaceAll("{canvas_width}", String(canvasSize.width))
+    .replaceAll("{canvas_height}", String(canvasSize.height))
+    .replaceAll("{max_width}", bounds.enabled ? String(bounds.width) : "unbounded")
+    .replaceAll(
+      "{max_height}",
+      bounds.enabled ? String(bounds.height) : "unbounded",
+    )
+    .replaceAll("{canvas_limit}", canvasLimit);
+}
+
+async function requestAgentDecision(
+  canvas: HTMLCanvasElement,
+  behavior: Exclude<VLMBehavior, "point">,
+  signal?: AbortSignal,
+): Promise<VLMAgentDecision | VLMGuideDecision> {
+  const live = useStore.getState();
+  if (!live.vlmModel.trim()) {
+    throw new Error("Select a Vision model under Advanced.");
+  }
+  const template =
+    behavior === "agent"
+      ? live.vlmAgentPrompt.trim()
+      : live.vlmGuidePrompt.trim();
+  if (!template) {
+    throw new Error(`VLM ${behavior === "agent" ? "Agent" : "Guide"} prompt is empty.`);
+  }
+  const instruction = renderAgentPrompt(
+    template,
+    { width: canvas.width, height: canvas.height },
+    {
+      enabled: live.boundsEnabled,
+      width: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsWidth)),
+      height: Math.max(PULL_PATCH_SIZE, Math.round(live.boundsHeight)),
+    },
+  );
+  const frame = await captureVisionCanvas({ source: canvas });
+  const provider = new OllamaVLMProvider(
+    live.vlmModel,
+    ollamaThinkFor(live.vlmModel, live.vlmThinkingMode),
+  );
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < VLM_AGENT_ATTEMPTS; attempt++) {
+    if (signal?.aborted) {
+      throw new DOMException(
+        "Generation aborted before VLM Guide decision",
+        "AbortError",
+      );
+    }
+    try {
+      const rawHistory =
+        live.vlmAgentHistoryLimit === 0 ? [] : live.vlmAgentHistory;
+      const decision =
+        behavior === "agent"
+          ? await provider.decide(
+              frame,
+              instruction,
+              rawHistory.filter(
+                (action): action is VLMAgentAction => "instruction" in action,
+              ),
+              signal,
+            )
+          : await provider.guide(
+              frame,
+              instruction,
+              rawHistory.map(({ x, y }) => ({ x, y })),
+              signal,
+            );
+      if (decision) return decision;
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      lastError = err;
+      console.warn(
+        `VLM ${behavior === "agent" ? "Agent" : "Guide"} attempt ${attempt + 1}/${VLM_AGENT_ATTEMPTS} failed.`,
+        err,
+      );
+    }
+  }
+  if (lastError instanceof Error) throw lastError;
+  throw new Error(
+    `VLM ${behavior === "agent" ? "Agent" : "Guide"} returned no valid decision after ${VLM_AGENT_ATTEMPTS} attempts.`,
+  );
+}
+
+async function applyAgentDecision(
+  decision: VLMAgentDecision | VLMGuideDecision,
+  behavior: Exclude<VLMBehavior, "point">,
+  canvasSize: { width: number; height: number },
+): Promise<void> {
+  const x = clamp01(decision.x);
+  const y = clamp01(decision.y);
+  let action: VLMCanvasAction;
+  if (behavior === "agent") {
+    if (!("instruction" in decision) || !decision.instruction.trim()) {
+      throw new Error("VLM Agent returned an empty edit instruction.");
+    }
+    action = { x, y, instruction: decision.instruction.trim() };
+  } else {
+    action = { x, y };
+  }
+  await pullHandle.triggerAt(pullPositionForCanvasPoint(action, canvasSize));
+  useStore.getState().patch({
+    vlmAgentAction: action,
+    // Pull centers the selected canvas coordinate in the local generation frame.
+    vlmPoint: { x: 0.5, y: 0.5 },
+  });
+}
 
 /**
- * VLM-mode per-generation step. Frame scope sends the generated frame and
- * stores the returned point as local COM. Canvas scope sends an overview of
- * the complete composite, maps the returned point back to composite pixels,
- * and Pulls a 1024px frame centered there for the next generation.
+ * VLM-mode per-generation step. Point behavior keeps its existing frame/canvas
+ * policies. Guide and Agent always read the complete current canvas. Guide
+ * chooses only the Pull location; Agent also supplies generation text.
  *
  * Writing to the store rather than the heatmap directly is deliberate: the
  * tracker re-emits the stored point every tick, so it survives the heatmap
@@ -385,7 +738,7 @@ const VLM_POINT_ATTEMPTS = 3;
  * Honors the same abort / epoch guards as `applyResult` so Stop halts and
  * Pull/Clear discards.
  */
-async function maybeUpdateVlmPoint(
+async function maybeUpdateVlmTracking(
   outputURL: string,
   signal?: AbortSignal,
   myEpoch?: number,
@@ -398,6 +751,33 @@ async function maybeUpdateVlmPoint(
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
   if (!live.vlmModel.trim()) {
     throw new Error("Select a Vision model under Advanced.");
+  }
+
+  if (live.vlmBehavior !== "point") {
+    const behavior = live.vlmBehavior;
+    const canvas = compositeStore.getCanvas();
+    if (!canvas) {
+      throw new Error("VLM Guide/Agent requires an active composite.");
+    }
+    const canvasSize = { width: canvas.width, height: canvas.height };
+    const nextDecision = await requestAgentDecision(canvas, behavior, signal);
+    if (signal?.aborted) {
+      throw new DOMException(
+        "Generation aborted before VLM canvas decision",
+        "AbortError",
+      );
+    }
+    if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
+    const current = useStore.getState();
+    if (
+      current.trackingMode !== "vlm" ||
+      current.vlmBehavior !== behavior ||
+      !current.trackingActive
+    ) {
+      return;
+    }
+    await applyAgentDecision(nextDecision, behavior, canvasSize);
+    return;
   }
 
   const scope = live.vlmScope;
@@ -429,7 +809,10 @@ async function maybeUpdateVlmPoint(
     );
   }
 
-  const provider = new OllamaVLMProvider(live.vlmModel);
+  const provider = new OllamaVLMProvider(
+    live.vlmModel,
+    ollamaThinkFor(live.vlmModel, live.vlmThinkingMode),
+  );
   const instruction = live.vlmPointPrompt;
   let point: VLMPoint | null = null;
   let lastError: unknown = null;
@@ -541,13 +924,6 @@ function imageNameFor(workflowType: WorkflowType): string {
   }
 }
 
-/**
- * The most recently rotation-picked workflow. Used to decide whether to
- * sync the global Steps input in `syncStepsOnWorkflowChange`. Module-
- * level (sibling pattern to `epoch.ts`) — not UI-reactive, just a memo.
- */
-let lastPickedWorkflow: string | null = null;
-
 function resolveWorkflow(): string | null {
   const state = useStore.getState();
   return pickFromPool(activePool(state.pinnedWorkflows, state.mutedWorkflows));
@@ -559,17 +935,14 @@ function resolveWorkflow(): string | null {
  * placeholder. Same workflow N times in a row keeps the user's override.
  */
 function syncStepsOnWorkflowChange(picked: string): void {
-  // Always publish the pick to the store so the panel can bold the
-  // matching workflow row, even when it doesn't change between runs.
-  useStore.getState().set("lastPickedWorkflow", picked);
-  if (picked === lastPickedWorkflow) return;
-  const descriptor = useStore
-    .getState()
-    .availableWorkflows.find((workflow) => workflow.path === picked);
-  if (descriptor?.default_steps != null) {
-    useStore.getState().set("steps", descriptor.default_steps);
-  }
-  lastPickedWorkflow = picked;
+  const state = useStore.getState();
+  const changed = picked !== state.lastPickedWorkflow;
+  state.set("lastPickedWorkflow", picked);
+  if (!changed && state.steps != null) return;
+  const descriptor = state.availableWorkflows.find(
+    (workflow) => workflow.path === picked,
+  );
+  state.set("steps", descriptor?.default_steps ?? null);
 }
 
 export type InputKind =
@@ -698,7 +1071,7 @@ async function applyResult(
   useCOM: boolean,
   signal?: AbortSignal,
   myEpoch?: number,
-): Promise<void> {
+): Promise<boolean> {
   // Two distinct bail-outs:
   //   - signal.aborted: Stop button was pressed. Throw AbortError so
   //     the iterative loop catches it and halts.
@@ -711,7 +1084,7 @@ async function applyResult(
     throw new DOMException("Generation aborted before apply", "AbortError");
   }
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) {
-    return;
+    return false;
   }
   const state = useStore.getState();
   const newImg = await loadImageEl(newImageURL);
@@ -722,7 +1095,7 @@ async function applyResult(
     throw new DOMException("Generation aborted before apply", "AbortError");
   }
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) {
-    return;
+    return false;
   }
 
   if (!state.compositeMode) {
@@ -744,7 +1117,7 @@ async function applyResult(
     };
     if (state.feedbackMode) simplePatch.baseImageURL = newImageURL;
     useStore.getState().patch(simplePatch);
-    return;
+    return true;
   }
 
   // Composite mode: stitch onto the live backing canvas (no PNG round-trip).
@@ -766,7 +1139,7 @@ async function applyResult(
     };
     if (state.feedbackMode) firstPatch.baseImageURL = newImageURL;
     useStore.getState().patch(firstPatch);
-    return;
+    return true;
   }
 
   // Lazy-init the first-patch marker for seed paths that pre-populate the
@@ -842,6 +1215,7 @@ async function applyResult(
     };
   }
   useStore.getState().patch(patch);
+  return true;
 }
 
 function loadImageEl(src: string): Promise<HTMLImageElement> {

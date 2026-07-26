@@ -20,15 +20,15 @@ export function WelcomeModal() {
           Set the ComfyUI and optional Ollama addresses under{" "}
           <strong>General</strong> in the settings drawer opened by the{" "}
           <strong>⚙</strong> button. Then choose a tracking mode under{" "}
-          <strong>Settings</strong> and pin a generation workflow under{" "}
+          <strong>Tracking</strong> and pin a generation workflow under{" "}
           <strong>Workflow</strong> in the panel. Hit{" "}
           <strong>Start tracking</strong>, then <strong>Generate</strong>{" "}
           to use the resulting heatmap to guide generation.
         </p>
         <p>
-          Interface scale, frame zoom, and panel auto-collapse options are under{" "}
-          <strong>Interface</strong> in the settings drawer; workspace view options
-          are under <strong>View</strong> in the panel.
+          Interface scale and panel auto-collapse options are under{" "}
+          <strong>Interface</strong> in the settings drawer; frame zoom and
+          workspace view options are under <strong>View</strong> in the panel.
         </p>
         <p>
           Open the built-in Guide with the <strong>?</strong> button for setup

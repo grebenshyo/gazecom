@@ -5,6 +5,13 @@ current tasks.
 
 ## VLM Mode
 
+- **Revisit task-specific vision reasoning controls.** Prompt-slot vision and
+  VLM tracking currently share the Vision model's thinking-effort setting.
+  If VLM Point or another use case makes the distinction useful, split it into
+  one shared Prompting-cog setting for prompt-slot vision and one VLM Settings
+  control for tracking. Do not add per-prompt-slot reasoning controls. Guide and
+  Agent are the current priority, so the extra distinction is deferred.
+
 - **Single-point inpainting masks — verify against a live model.** The VLM
   point renders through the normal h337 heatmap again (the historical
   "vanishing dot" was h337 silently dropping *fractional* coordinates — its

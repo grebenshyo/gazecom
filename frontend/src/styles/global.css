@@ -11,6 +11,7 @@
   --border-color: #ccc;
   --dropdown-bg: #ffffff;
   --dropdown-text: #333;
+  --control-label-bg: rgba(0, 0, 0, 0.02);
   --body-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --tracker-preview-width: 240px;
   --tracker-preview-height: 180px;
@@ -29,6 +30,7 @@ body.gz-theme-dark {
   --border-color: #444;
   --dropdown-bg: #1f1f1f;
   --dropdown-text: #e0e0e0;
+  --control-label-bg: rgba(255, 255, 255, 0.05);
 }
 
 /* WebGazer injects its own fixed-position camera preview outside React.

@@ -77,8 +77,6 @@ async def generate(
     settings: Settings = Depends(get_settings),
 ):
     clean_prompt = prompt.strip()
-    if not clean_prompt:
-        raise HTTPException(400, "Prompt is required.")
 
     client = ComfyClient(resolve_comfy_host(settings))
 

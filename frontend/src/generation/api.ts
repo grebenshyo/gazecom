@@ -9,6 +9,15 @@
 
 import type { WorkflowDescriptor } from "./workflows";
 
+export type OllamaThink = boolean | "low" | "medium" | "high" | "max";
+export type OllamaThinkingMode =
+  | "off"
+  | "on"
+  | "low"
+  | "medium"
+  | "high"
+  | "max";
+
 export interface GenerateRequest {
   /** PNG bytes encoded as a Blob. */
   image: Blob;
@@ -17,7 +26,8 @@ export interface GenerateRequest {
   /** Merged workflow-catalog key (e.g. "img/SDXL-TURBO.json"). */
   workflow: string;
   prompt: string;
-  steps: number;
+  /** Omitted when the workflow does not expose a configurable step count. */
+  steps: number | null;
   /**
    * When true, the backend swallows execution errors from known
    * cloud-provider nodes and
@@ -35,6 +45,13 @@ export interface LLMEnhanceRequest {
   prompt: string;
   model: string;
   template?: string;
+  think?: OllamaThink;
+}
+
+export interface OllamaModelInfo {
+  name: string;
+  capabilities: string[];
+  thinking_modes: OllamaThinkingMode[];
 }
 
 export interface VLMDescribeRequest {
@@ -42,6 +59,7 @@ export interface VLMDescribeRequest {
   imageName: string;
   prompt: string;
   model: string;
+  think?: OllamaThink;
 }
 
 export interface VLMPointRequest {
@@ -50,6 +68,27 @@ export interface VLMPointRequest {
   /** Instruction override; empty string uses the backend default. */
   prompt: string;
   model: string;
+  think?: OllamaThink;
+}
+
+export interface VLMAgentDecisionRequest {
+  image: Blob;
+  imageName: string;
+  prompt: string;
+  model: string;
+  history: VLMAgentDecision[];
+  behavior?: "agent";
+  think?: OllamaThink;
+}
+
+export interface VLMGuideDecisionRequest {
+  image: Blob;
+  imageName: string;
+  prompt: string;
+  model: string;
+  history: VLMGuideDecision[];
+  behavior: "guide";
+  think?: OllamaThink;
 }
 
 /** Salient point normalized to [0, 1] over the submitted image. */
@@ -57,6 +96,14 @@ export interface VLMPoint {
   x: number;
   y: number;
 }
+
+/** Next edit chosen by Agent, normalized over the submitted canvas. */
+export interface VLMAgentDecision extends VLMPoint {
+  instruction: string;
+}
+
+/** Next canvas location chosen by Guide. */
+export type VLMGuideDecision = VLMPoint;
 
 export type GenerateResponse =
   | { kind: "image"; blob: Blob; objectURL: string }
@@ -91,7 +138,7 @@ export async function generateRequest(
   fd.append("image", req.image, req.imageName);
   fd.append("workflow", req.workflow);
   fd.append("prompt", req.prompt);
-  fd.append("steps", String(req.steps));
+  if (req.steps != null) fd.append("steps", String(req.steps));
   if (req.skipProviderErrors) {
     fd.append("skip_provider_errors", "true");
   }
@@ -215,10 +262,10 @@ export async function setOllamaKeepModelLoaded(
   return resp.json() as Promise<AppConfig>;
 }
 
-export async function fetchLlmModels(): Promise<string[]> {
+export async function fetchLlmModels(): Promise<OllamaModelInfo[]> {
   const resp = await fetch(`${API_BASE}/api/llm/models`);
   if (!resp.ok) throw new Error(`LLM models failed: HTTP ${resp.status}`);
-  const body = (await resp.json()) as { models?: string[] };
+  const body = (await resp.json()) as { models?: OllamaModelInfo[] };
   return body.models ?? [];
 }
 
@@ -250,6 +297,7 @@ export async function describeImageRequest(
   fd.append("image", req.image, req.imageName);
   fd.append("prompt", req.prompt);
   fd.append("model", req.model);
+  if (req.think !== undefined) fd.append("think", String(req.think));
 
   const resp = await fetch(`${API_BASE}/api/llm/describe`, {
     method: "POST",
@@ -280,6 +328,7 @@ export async function pointFromImageRequest(
   fd.append("image", req.image, req.imageName);
   fd.append("prompt", req.prompt);
   fd.append("model", req.model);
+  if (req.think !== undefined) fd.append("think", String(req.think));
 
   const resp = await fetch(`${API_BASE}/api/llm/point`, {
     method: "POST",
@@ -298,4 +347,55 @@ export async function pointFromImageRequest(
     );
   }
   return (await resp.json()) as VLMPoint;
+}
+
+/**
+ * Ask the VLM to choose the next canvas location.
+ * A model response that violates the structured contract is returned as null
+ * (backend 422), allowing the generation pipeline to resubmit deliberately.
+ */
+export async function agentDecisionFromImageRequest(
+  req: VLMAgentDecisionRequest,
+  signal?: AbortSignal,
+): Promise<VLMAgentDecision | null> {
+  return canvasDecisionFromImageRequest<VLMAgentDecision>(req, signal);
+}
+
+export async function guideDecisionFromImageRequest(
+  req: VLMGuideDecisionRequest,
+  signal?: AbortSignal,
+): Promise<VLMGuideDecision | null> {
+  return canvasDecisionFromImageRequest<VLMGuideDecision>(req, signal);
+}
+
+async function canvasDecisionFromImageRequest<
+  T extends VLMAgentDecision | VLMGuideDecision,
+>(
+  req: VLMAgentDecisionRequest | VLMGuideDecisionRequest,
+  signal?: AbortSignal,
+): Promise<T | null> {
+  const fd = new FormData();
+  fd.append("image", req.image, req.imageName);
+  fd.append("prompt", req.prompt);
+  fd.append("model", req.model);
+  fd.append("history", JSON.stringify(req.history));
+  fd.append("behavior", req.behavior ?? "agent");
+  if (req.think !== undefined) fd.append("think", String(req.think));
+
+  const resp = await fetch(`${API_BASE}/api/llm/decision`, {
+    method: "POST",
+    body: fd,
+    signal,
+  });
+  if (resp.status === 422) {
+    return null;
+  }
+  if (!resp.ok) {
+    const text = await responseMessage(resp);
+    const label = req.behavior === "guide" ? "guide" : "agent";
+    throw new Error(
+      `VLM ${label} decision failed: HTTP ${resp.status}${text ? " — " + text : ""}`,
+    );
+  }
+  return (await resp.json()) as T;
 }

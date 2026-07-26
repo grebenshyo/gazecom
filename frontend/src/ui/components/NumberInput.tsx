@@ -6,10 +6,11 @@
  * skin so labels align with surrounding controls.
  */
 
+import type { ReactNode } from "react";
 import "./NumberInput.css";
 
 interface NumberInputProps {
-  label: string;
+  label: ReactNode;
   value: number;
   onChange: (value: number) => void;
   min?: number;

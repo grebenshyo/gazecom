@@ -40,6 +40,10 @@ export async function clearAndReseed(
     baseCOM: { x: 0.5, y: 0.5 },
     firstPatchPosition: null,
     isComposited: false,
+    vlmPoint: null,
+    vlmAgentAction: null,
+    vlmAgentHistory: [],
+    vlmAgentWorkspaceReady: false,
     // Display counter ("patches since last clear") resets here so
     // both the manual button and the pipeline's auto-clear path
     // restart from 0 the same way.

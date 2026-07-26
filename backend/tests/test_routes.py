@@ -53,13 +53,40 @@ def test_health(client: TestClient) -> None:
 # ── Generate ────────────────────────────────────────────────────────────
 
 
-def test_generate_rejects_empty_prompt(client: TestClient) -> None:
+def test_generate_accepts_empty_prompt(
+    client: TestClient,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (settings.workflows_dir / "img").mkdir()
+    (settings.workflows_dir / "img" / "example.json").write_text(
+        json.dumps(_api_workflow())
+    )
+    captured: dict = {}
+
+    async def fake_upload_image(_client, _data: bytes, _name: str) -> str:
+        return "uploaded.png"
+
+    async def fake_run_for_image(_client, workflow: dict, _timeout: float) -> bytes:
+        captured["workflow"] = workflow
+        return b"generated"
+
+    monkeypatch.setattr(
+        "gengaze.routes.generate.ComfyClient.upload_image",
+        fake_upload_image,
+    )
+    monkeypatch.setattr(
+        "gengaze.routes.generate.ComfyClient.run_for_image",
+        fake_run_for_image,
+    )
+
     resp = client.post(
         "/api/generate",
         data={"prompt": "   ", "workflow": "img/example.json"},
+        files={"image": ("input.png", b"input", "image/png")},
     )
-    assert resp.status_code == 400
-    assert resp.json() == {"detail": "Prompt is required."}
+    assert resp.status_code == 200
+    assert captured["workflow"]["2"]["inputs"]["text"] == ""
 
 
 # ── Workflows ───────────────────────────────────────────────────────────

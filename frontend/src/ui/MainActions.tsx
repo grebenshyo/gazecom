@@ -36,6 +36,8 @@ export function MainActions({
   onClearHeatmap,
 }: MainActionsProps) {
   const trackingActive = useStore((s) => s.trackingActive);
+  const trackingMode = useStore((s) => s.trackingMode);
+  const vlmBehavior = useStore((s) => s.vlmBehavior);
   const generationInProgress = useStore((s) => s.generationInProgress);
   const compositeHasCanvas = useStore((s) => s.compositeHasCanvas);
   const iterativeMode = useStore((s) => s.iterativeMode);
@@ -50,7 +52,13 @@ export function MainActions({
   const poolEmpty = Object.keys(pinnedWorkflows).length === 0;
   const hasActiveWorkflow =
     Object.keys(activePool(pinnedWorkflows, mutedWorkflows)).length > 0;
-  const promptPoolValid = promptPoolIsValid(pinnedPrompts);
+  const agentSelected =
+    trackingMode === "vlm" && vlmBehavior === "agent";
+  const canvasVlmSelected =
+    trackingMode === "vlm" && vlmBehavior !== "point";
+  const canvasVlmReady = !canvasVlmSelected || trackingActive;
+  const promptPoolValid =
+    agentSelected || promptPoolIsValid(pinnedPrompts);
 
   const handleGenerateClick = () => {
     if (isGenerating) {
@@ -133,9 +141,13 @@ export function MainActions({
         variant="primary"
         onClick={handleGenerateClick}
         // Both pools use relative weights normalized during selection. The
-        // only blocker is having no nonblank, positive, unmuted entry to pick.
+        // only blocker is having no positive, unmuted entry to pick. Empty text
+        // is a valid prompt and is passed to the selected workflow unchanged.
         // Stop remains clickable while a generation is running.
-        disabled={!isGenerating && (!hasActiveWorkflow || !promptPoolValid)}
+        disabled={
+          !isGenerating &&
+          (!hasActiveWorkflow || !promptPoolValid || !canvasVlmReady)
+        }
         title={
           isGenerating
             ? undefined
@@ -143,8 +155,10 @@ export function MainActions({
               ? "Pin a workflow first"
               : !hasActiveWorkflow
                 ? "Unmute a workflow or give one a weight above 0"
+                : !canvasVlmReady
+                  ? `Start VLM ${vlmBehavior === "agent" ? "Agent" : "Guide"} tracking first`
                 : !promptPoolValid
-                  ? "Enter text in an unmuted prompt slot with a weight above 0"
+                  ? "Unmute a prompt slot or give one a weight above 0"
                   : undefined
         }
       >

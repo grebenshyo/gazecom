@@ -18,16 +18,12 @@
   align-items: center;
   justify-content: center;
   border-right: 1px solid var(--border-color);
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--control-label-bg);
   color: var(--text-color);
   font-size: 9px;
   font-weight: 500;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-}
-
-body.gz-theme-dark .gz-workflow-picker__label {
-  background: rgba(255, 255, 255, 0.05);
 }
 
 .gz-workflow-picker__trigger {

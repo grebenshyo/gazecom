@@ -59,8 +59,15 @@ describe("settings files", () => {
   it("exports current settings without legacy keys", () => {
     writeJSON(StorageKeys.steps, 42);
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
+    writeJSON(StorageKeys.llmThinkingMode, "off");
+    writeJSON(StorageKeys.vlmThinkingMode, "low");
+    writeJSON(StorageKeys.vlmBehavior, "agent");
+    writeJSON(StorageKeys.vlmAgentHistoryLimit, 12);
     writeJSON(StorageKeys.vlmScope, "canvas");
+    writeJSON(StorageKeys.vlmGuidePrompt, "Choose the next location.");
+    writeJSON(StorageKeys.vlmAgentPrompt, "Choose the next edit.");
     writeJSON(StorageKeys.vlmPointPromptHeight, 180);
+    writeJSON(StorageKeys.vlmAgentActionHeight, 96);
     writeJSON(StorageKeys.autoCollapsePanels, true);
     writeJSON(StorageKeys.mutedWorkflows, ["edit/example.json"]);
     writeJSON(StorageKeys.roamSpeed, 9);
@@ -73,8 +80,15 @@ describe("settings files", () => {
       settings: {
         steps: 42,
         vlmModel: "gemma4:latest",
+        llmThinkingMode: "off",
+        vlmThinkingMode: "low",
+        vlmBehavior: "agent",
+        vlmAgentHistoryLimit: 12,
         vlmScope: "canvas",
+        vlmGuidePrompt: "Choose the next location.",
+        vlmAgentPrompt: "Choose the next edit.",
         vlmPointPromptHeight: 180,
+        vlmAgentActionHeight: 96,
         autoCollapsePanels: true,
         mutedWorkflows: ["edit/example.json"],
       },
@@ -100,6 +114,17 @@ describe("settings files", () => {
     expect(localStorage.getItem("other-app-key")).toBe("keep-me");
   });
 
+  it("accepts a blank workflow step setting", () => {
+    const count = applySettingsFile({
+      format: "gazeCOM-settings",
+      schema: 1,
+      settings: { steps: null },
+    });
+
+    expect(count).toBe(1);
+    expect(readJSON(StorageKeys.steps, 99)).toBeNull();
+  });
+
   it("rejects invalid known values before changing current settings", () => {
     writeJSON(StorageKeys.steps, 77);
 
@@ -111,6 +136,36 @@ describe("settings files", () => {
       }),
     ).toThrow('Invalid value for setting "steps".');
     expect(readJSON(StorageKeys.steps, 0)).toBe(77);
+  });
+
+  it("rejects an invalid VLM behavior", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { vlmBehavior: "automatic" },
+      }),
+    ).toThrow('Invalid value for setting "vlmBehavior".');
+  });
+
+  it("rejects an invalid Agent history limit", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { vlmAgentHistoryLimit: -1 },
+      }),
+    ).toThrow('Invalid value for setting "vlmAgentHistoryLimit".');
+  });
+
+  it("rejects an invalid Ollama thinking mode", () => {
+    expect(() =>
+      applySettingsFile({
+        format: "gazeCOM-settings",
+        schema: 1,
+        settings: { vlmThinkingMode: "automatic" },
+      }),
+    ).toThrow('Invalid value for setting "vlmThinkingMode".');
   });
 
   it("rejects invalid muted workflow paths", () => {

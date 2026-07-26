@@ -87,14 +87,13 @@ export function pickFromPool(
 }
 
 /**
- * Add a workflow to the pool. First pin gets weight 100; subsequent pins
- * default to 0 so adding one does not immediately alter selection. No-op
- * (returns a copy) if the path is already pinned.
+ * Add a workflow to the pool with unit weight. Since selection normalizes the
+ * pool automatically, equal defaults produce an equal mix without implying a
+ * percentage scale. No-op (returns a copy) if the path is already pinned.
  */
 export function addToPool(pinned: PinnedPool, path: string): PinnedPool {
   if (Object.hasOwn(pinned, path)) return { ...pinned };
-  if (Object.keys(pinned).length === 0) return { [path]: 100 };
-  return { ...pinned, [path]: 0 };
+  return { ...pinned, [path]: 1 };
 }
 
 /**

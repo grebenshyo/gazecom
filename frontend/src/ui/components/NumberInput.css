@@ -26,13 +26,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--control-label-bg);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-body.gz-theme-dark .gz-numinput__label {
-  background: rgba(255, 255, 255, 0.05);
+.gz-numinput__label-unit {
+  text-transform: lowercase;
 }
 
 .gz-numinput__input {

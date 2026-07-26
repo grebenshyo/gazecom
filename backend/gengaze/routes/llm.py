@@ -7,13 +7,14 @@ Ollama's local HTTP API directly.
 
 from __future__ import annotations
 
+import json
 import re
 from base64 import b64encode
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from gengaze.config import Settings, get_settings
 from gengaze.user_config import (
@@ -23,8 +24,11 @@ from gengaze.user_config import (
 
 router = APIRouter()
 
+OllamaThink = bool | Literal["low", "medium", "high", "max"]
+OllamaThinkingMode = Literal["off", "on", "low", "medium", "high", "max"]
+
 DEFAULT_ENHANCE_TEMPLATE = (
-    'Rewrite this into a stronger image-generation prompt:\n\n'
+    "Rewrite this into a stronger image-generation prompt:\n\n"
     '"{prompt}"\n\n'
     "Return only the rewritten prompt, no explanation.\n"
     "Keep it concise."
@@ -32,7 +36,6 @@ DEFAULT_ENHANCE_TEMPLATE = (
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _WHITESPACE_RE = re.compile(r"\s+")
 _EMPTY_SENTINEL = "<empty>"
-OLLAMA_THINK_LEVEL = "low"
 OLLAMA_NUM_PREDICT = 2048
 OLLAMA_DESCRIBE_NUM_PREDICT = 2048
 
@@ -56,20 +59,102 @@ class LLMEnhanceIn(BaseModel):
     prompt: str = Field(min_length=1)
     model: str = Field(min_length=1)
     template: str = DEFAULT_ENHANCE_TEMPLATE
+    think: OllamaThink | None = None
 
 
 class LLMEnhanceOut(BaseModel):
     text: str
 
 
+class LLMModelInfo(BaseModel):
+    name: str
+    capabilities: list[str] = []
+    thinking_modes: list[OllamaThinkingMode] = []
+
+
 class LLMModelsOut(BaseModel):
-    models: list[str]
+    models: list[LLMModelInfo]
 
 
 class LLMPointOut(BaseModel):
     # Salient point, normalized to [0, 1] over the submitted image.
     x: float
     y: float
+
+
+class VLMAgentDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1000)
+    y: float = Field(ge=0, le=1000)
+    instruction: str = Field(min_length=1)
+
+
+class VLMAgentDecisionOut(BaseModel):
+    # Coordinates are normalized to [0, 1] over the submitted canvas.
+    x: float
+    y: float
+    instruction: str
+
+
+class VLMAgentHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    instruction: str = Field(min_length=1)
+
+
+_AGENT_HISTORY_ADAPTER = TypeAdapter(list[VLMAgentHistoryItem])
+
+
+class VLMGuideDecision(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    x: float = Field(ge=0, le=1000)
+    y: float = Field(ge=0, le=1000)
+
+
+class VLMGuideDecisionOut(BaseModel):
+    x: float
+    y: float
+
+
+class VLMGuideHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+_GUIDE_HISTORY_ADAPTER = TypeAdapter(list[VLMGuideHistoryItem])
+
+
+def _thinking_modes_for_model(item: dict[str, Any]) -> list[OllamaThinkingMode]:
+    capabilities = item.get("capabilities")
+    if not isinstance(capabilities, list) or "thinking" not in capabilities:
+        return []
+
+    details = item.get("details")
+    families: set[str] = set()
+    if isinstance(details, dict):
+        family = details.get("family")
+        if isinstance(family, str):
+            families.add(family.casefold())
+        listed_families = details.get("families")
+        if isinstance(listed_families, list):
+            families.update(
+                family.casefold() for family in listed_families if isinstance(family, str)
+            )
+
+    # Ollama exposes the model family and broad thinking capability, but not
+    # its accepted effort values. Keep the compatibility mapping here rather
+    # than making the UI guess from model names.
+    if "gptoss" in families:
+        return ["low", "medium", "high"]
+    if "gemma4" in families:
+        return ["off", "low", "medium", "high", "max"]
+    return ["off", "on"]
 
 
 def _ollama_base_url(host: str) -> str:
@@ -86,9 +171,10 @@ def _strip_model_output(text: str) -> str:
 
 
 def _same_prompt(a: str, b: str) -> bool:
-    return _WHITESPACE_RE.sub(" ", a).strip().casefold() == _WHITESPACE_RE.sub(
-        " ", b
-    ).strip().casefold()
+    return (
+        _WHITESPACE_RE.sub(" ", a).strip().casefold()
+        == _WHITESPACE_RE.sub(" ", b).strip().casefold()
+    )
 
 
 def _render_enhance_prompt(template: str, prompt: str) -> str:
@@ -105,6 +191,16 @@ def _extract_ollama_text(body: dict[str, Any]) -> str:
     message = body.get("message")
     if isinstance(message, dict) and isinstance(message.get("content"), str):
         return message["content"]
+    return ""
+
+
+def _extract_ollama_thinking(body: dict[str, Any]) -> str:
+    thinking = body.get("thinking")
+    if isinstance(thinking, str):
+        return thinking
+    message = body.get("message")
+    if isinstance(message, dict) and isinstance(message.get("thinking"), str):
+        return message["thinking"]
     return ""
 
 
@@ -184,6 +280,50 @@ def _validate_point(
     return point, None
 
 
+def _validate_agent_decision(
+    body: Any,
+) -> tuple[VLMAgentDecisionOut | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "unexpected non-object response"
+    text = _strip_model_output(_extract_ollama_text(body))
+    if not text:
+        # Qwen3-VL thinking checkpoints can place schema-constrained output in
+        # Ollama's thinking field even with think=false. Only accept it when the
+        # entire field validates as the strict decision object below.
+        text = _strip_model_output(_extract_ollama_thinking(body))
+    if not text:
+        return None, f"empty agent decision ({_body_summary(body)})"
+    try:
+        decision = VLMAgentDecision.model_validate_json(text)
+    except ValidationError as e:
+        return None, f"invalid agent decision ({_short_detail(str(e))})"
+
+    instruction = decision.instruction.strip()
+    if not instruction:
+        return None, "empty agent instruction"
+    x, y = _normalize_coord(decision.x, decision.y)
+    return VLMAgentDecisionOut(x=x, y=y, instruction=instruction), None
+
+
+def _validate_guide_decision(
+    body: Any,
+) -> tuple[VLMGuideDecisionOut | None, str | None]:
+    if not isinstance(body, dict):
+        return None, "unexpected non-object response"
+    text = _strip_model_output(_extract_ollama_text(body))
+    if not text:
+        text = _strip_model_output(_extract_ollama_thinking(body))
+    if not text:
+        return None, f"empty guide decision ({_body_summary(body)})"
+    try:
+        decision = VLMGuideDecision.model_validate_json(text)
+    except ValidationError as e:
+        return None, f"invalid guide decision ({_short_detail(str(e))})"
+
+    x, y = _normalize_coord(decision.x, decision.y)
+    return VLMGuideDecisionOut(x=x, y=y), None
+
+
 def _short_detail(text: str, max_len: int = 400) -> str:
     text = text.strip()
     if len(text) <= max_len:
@@ -191,8 +331,97 @@ def _short_detail(text: str, max_len: int = 400) -> str:
     return text[: max_len - 1].rstrip() + "…"
 
 
-def _without_think(payload: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in payload.items() if key != "think"}
+def _ollama_attempts(
+    chat_payload: dict[str, Any],
+    generate_payload: dict[str, Any],
+    think: OllamaThink | None,
+) -> list[tuple[str, str, dict[str, Any]]]:
+    if think is not None:
+        chat_payload["think"] = think
+        generate_payload["think"] = think
+    mode = str(think).lower() if think is not None else "default"
+    return [
+        (f"chat+{mode}", "/api/chat", chat_payload),
+        (f"generate+{mode}", "/api/generate", generate_payload),
+    ]
+
+
+def _parse_agent_history(raw: str) -> list[VLMAgentHistoryItem]:
+    try:
+        return _AGENT_HISTORY_ADAPTER.validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            400,
+            f"Guide history is invalid: {_short_detail(str(e))}",
+        ) from e
+
+
+def _parse_guide_history(raw: str) -> list[VLMGuideHistoryItem]:
+    try:
+        return _GUIDE_HISTORY_ADAPTER.validate_json(raw)
+    except ValidationError as e:
+        raise HTTPException(
+            400,
+            f"Guide history is invalid: {_short_detail(str(e))}",
+        ) from e
+
+
+def _decision_chat_messages(
+    instruction: str,
+    history: list[VLMAgentHistoryItem] | list[VLMGuideHistoryItem],
+    image_b64: str,
+    *,
+    include_edit_instruction: bool,
+) -> list[dict[str, Any]]:
+    if not history:
+        return [
+            {
+                "role": "user",
+                "content": instruction,
+                "images": [image_b64],
+            }
+        ]
+
+    # Keep previous images out of the context: the text decisions establish
+    # continuity while only the latest canvas consumes vision tokens.
+    messages: list[dict[str, Any]] = [{"role": "user", "content": instruction}]
+    for action in history:
+        action_payload: dict[str, float | str] = {
+            "x": round(action.x * 1000, 3),
+            "y": round(action.y * 1000, 3),
+        }
+        if include_edit_instruction and isinstance(action, VLMAgentHistoryItem):
+            action_payload["instruction"] = action.instruction.strip()
+        messages.append(
+            {
+                "role": "assistant",
+                "content": json.dumps(action_payload, separators=(",", ":")),
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "The crop centered at that coordinate was generated and "
+                    "composited."
+                ),
+            }
+        )
+    messages.append(
+        {
+            "role": "user",
+            "content": instruction,
+            "images": [image_b64],
+        }
+    )
+    return messages
+
+
+def _flatten_chat_messages(messages: list[dict[str, Any]]) -> str:
+    return "\n\n".join(
+        f"{str(message.get('role', 'user')).upper()}: {str(message.get('content', '')).strip()}"
+        for message in messages
+    )
 
 
 def _ollama_keep_alive(settings: Settings) -> int:
@@ -211,15 +440,31 @@ async def list_models(settings: Settings = Depends(get_settings)) -> LLMModelsOu
             resp.raise_for_status()
 
             body = resp.json()
-            models: list[str] = []
+            models: list[LLMModelInfo] = []
             for item in body.get("models", []):
                 if isinstance(item, dict) and isinstance(item.get("name"), str):
-                    models.append(item["name"])
+                    capabilities = item.get("capabilities")
+                    models.append(
+                        LLMModelInfo(
+                            name=item["name"],
+                            capabilities=sorted(
+                                {
+                                    capability
+                                    for capability in capabilities
+                                    if isinstance(capability, str)
+                                },
+                                key=str.casefold,
+                            )
+                            if isinstance(capabilities, list)
+                            else [],
+                            thinking_modes=_thinking_modes_for_model(item),
+                        )
+                    )
 
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Ollama model list failed: {e}") from e
 
-    return LLMModelsOut(models=sorted(models, key=str.casefold))
+    return LLMModelsOut(models=sorted(models, key=lambda model: model.name.casefold()))
 
 
 @router.post("/llm/enhance", summary="Enhance a prompt through Ollama")
@@ -240,7 +485,6 @@ async def enhance(
         "messages": [
             {"role": "user", "content": task_prompt},
         ],
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
@@ -248,17 +492,11 @@ async def enhance(
     generate_payload: dict[str, Any] = {
         "model": model,
         "prompt": task_prompt,
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
     }
-    attempts: list[tuple[str, str, dict[str, Any]]] = [
-        ("chat+think", "/api/chat", chat_payload),
-        ("chat", "/api/chat", _without_think(chat_payload)),
-        ("generate+think", "/api/generate", generate_payload),
-        ("generate", "/api/generate", _without_think(generate_payload)),
-    ]
+    attempts = _ollama_attempts(chat_payload, generate_payload, body.think)
     base_url = _ollama_base_url(resolve_ollama_host(settings))
     failures: list[str] = []
 
@@ -300,6 +538,7 @@ async def describe(
     image: UploadFile = File(...),
     model: str = Form(min_length=1),
     prompt: str = Form(default=""),
+    think: OllamaThink | None = Form(default=None),
     settings: Settings = Depends(get_settings),
 ) -> LLMEnhanceOut:
     instruction = prompt.strip()
@@ -325,7 +564,6 @@ async def describe(
                 "images": [image_b64],
             }
         ],
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
@@ -334,17 +572,11 @@ async def describe(
         "model": model_name,
         "prompt": instruction,
         "images": [image_b64],
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
     }
-    attempts: list[tuple[str, str, dict[str, Any]]] = [
-        ("chat+think", "/api/chat", chat_payload),
-        ("chat", "/api/chat", _without_think(chat_payload)),
-        ("generate+think", "/api/generate", generate_payload),
-        ("generate", "/api/generate", _without_think(generate_payload)),
-    ]
+    attempts = _ollama_attempts(chat_payload, generate_payload, think)
     base_url = _ollama_base_url(resolve_ollama_host(settings))
     failures: list[str] = []
 
@@ -388,6 +620,7 @@ async def point(
     image: UploadFile = File(...),
     model: str = Form(min_length=1),
     prompt: str = Form(default=""),
+    think: OllamaThink | None = Form(default=None),
     settings: Settings = Depends(get_settings),
 ) -> LLMPointOut:
     instruction = prompt.strip() or POINT_SYSTEM_PROMPT
@@ -411,7 +644,6 @@ async def point(
                 "images": [image_b64],
             }
         ],
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
@@ -420,17 +652,11 @@ async def point(
         "model": model_name,
         "prompt": instruction,
         "images": [image_b64],
-        "think": OLLAMA_THINK_LEVEL,
         "stream": False,
         "keep_alive": keep_alive,
         "options": options,
     }
-    attempts: list[tuple[str, str, dict[str, Any]]] = [
-        ("chat+think", "/api/chat", chat_payload),
-        ("chat", "/api/chat", _without_think(chat_payload)),
-        ("generate+think", "/api/generate", generate_payload),
-        ("generate", "/api/generate", _without_think(generate_payload)),
-    ]
+    attempts = _ollama_attempts(chat_payload, generate_payload, think)
     base_url = _ollama_base_url(resolve_ollama_host(settings))
     failures: list[str] = []
     # Distinguish "reached the model but couldn't parse a point" (422, worth a
@@ -471,4 +697,104 @@ async def point(
     raise HTTPException(
         status,
         f"Ollama point failed. Attempts: {'; '.join(failures)}",
+    )
+
+
+@router.post(
+    "/llm/decision",
+    summary="Choose the next canvas action or location through Ollama",
+)
+async def decision(
+    image: UploadFile = File(...),
+    model: str = Form(min_length=1),
+    prompt: str = Form(min_length=1),
+    history: str = Form(default="[]"),
+    behavior: Literal["agent", "guide"] = Form(default="agent"),
+    think: OllamaThink | None = Form(default=None),
+    settings: Settings = Depends(get_settings),
+) -> VLMAgentDecisionOut | VLMGuideDecisionOut:
+    instruction = prompt.strip()
+    if not instruction:
+        raise HTTPException(400, f"{behavior.title()} prompt is empty.")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(400, "Image is empty.")
+
+    image_b64 = b64encode(image_bytes).decode("ascii")
+    model_name = model.strip()
+    if behavior == "agent":
+        parsed_history = _parse_agent_history(history)
+        output_schema = VLMAgentDecision.model_json_schema()
+        validate_decision = _validate_agent_decision
+    else:
+        parsed_history = _parse_guide_history(history)
+        output_schema = VLMGuideDecision.model_json_schema()
+        validate_decision = _validate_guide_decision
+    options = {
+        "temperature": 0.1,
+        "num_predict": OLLAMA_DESCRIBE_NUM_PREDICT,
+    }
+    keep_alive = _ollama_keep_alive(settings)
+    messages = _decision_chat_messages(
+        instruction,
+        parsed_history,
+        image_b64,
+        include_edit_instruction=behavior == "agent",
+    )
+    chat_payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+        "format": output_schema,
+        "stream": False,
+        "keep_alive": keep_alive,
+        "options": options,
+    }
+    generate_payload: dict[str, Any] = {
+        "model": model_name,
+        "prompt": _flatten_chat_messages(messages),
+        "images": [image_b64],
+        "format": output_schema,
+        "stream": False,
+        "keep_alive": keep_alive,
+        "options": options,
+    }
+    attempts = _ollama_attempts(chat_payload, generate_payload, think)
+    base_url = _ollama_base_url(resolve_ollama_host(settings))
+    failures: list[str] = []
+    got_response = False
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
+            for label, path, payload in attempts:
+                try:
+                    resp = await client.post(f"{base_url}{path}", json=payload)
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    failures.append(
+                        f"{label}: HTTP {e.response.status_code} "
+                        f"{_short_detail(e.response.text or str(e))}"
+                    )
+                    continue
+                except httpx.HTTPError as e:
+                    failures.append(f"{label}: {_short_detail(str(e))}")
+                    continue
+
+                try:
+                    response_body = resp.json()
+                except ValueError as e:
+                    failures.append(f"{label}: invalid JSON response ({e})")
+                    continue
+
+                got_response = True
+                parsed, failure = validate_decision(response_body)
+                if parsed is not None:
+                    return parsed
+                failures.append(f"{label}: {failure}")
+    except httpx.HTTPError as e:
+        failures.append(f"client: {_short_detail(str(e))}")
+
+    status = 422 if got_response else 502
+    raise HTTPException(
+        status,
+        f"Ollama {behavior} decision failed. Attempts: {'; '.join(failures)}",
     )

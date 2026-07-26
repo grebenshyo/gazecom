@@ -80,8 +80,12 @@ the product, distribution package, and command-line entry point use gazeCOM.
   events to fetch outputs (no filesystem polling).
 - `workflow.py` — pure placeholder substitution (unit-tested).
 - `routes/` — `config`, `workflows`, `images`, `generate`, and `llm`
-  (`/api/llm/enhance`, `/describe`, `/point`, `/models`). The models endpoint
-  reports Ollama's installed tags without guessing model capabilities.
+  (`/api/llm/enhance`, `/describe`, `/point`, `/decision`, `/models`). The
+  models endpoint reports Ollama's installed tags, advertised capabilities,
+  and family-derived thinking modes.
+  `/decision` accepts the current canvas plus behavior-specific history. Guide
+  requires structured `{x, y}` output; Agent requires
+  `{x, y, instruction}`. Neither substitutes a fallback decision.
 
 ## Frontend (`frontend/src/`)
 
@@ -92,9 +96,11 @@ the product, distribution package, and command-line entry point use gazeCOM.
   `CompositeBounds.ts` (bounds/COM clamping), `PullTool.tsx` (1024² crop).
 - `trackers/` — seven sources behind one `Tracker` interface: WebGazer,
   Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (the vision
-  model reports a frame-local point or a canvas point that drives Pull;
-  `VLMTracker` renders the resulting local `store.vlmPoint` through the normal
-  heatmap sink). Factory in `trackers/index.ts`.
+  model reports a frame-local/canvas point, chooses the next Pull location in
+  Guide behavior, or chooses both location and instruction in Agent behavior;
+  `VLMTracker` renders the resulting local
+  `store.vlmPoint` through the normal heatmap sink). Factory in
+  `trackers/index.ts`.
 - `generation/` — `pipeline.ts` (single `generateOnce` entry point),
   `workflows.ts` (weighted-random selection), `captureHeatmap.ts`, `llm.ts`
   (Ollama-backed provider), `api.ts` (typed fetch wrappers).
@@ -214,7 +220,26 @@ same key overrides the bundled workflow. Prompt enhancement and vision call
 Ollama directly through `/api/llm/*`; they do not use ComfyUI workflows.
 Installed Ollama tags populate both model menus, but selections begin blank and
 remain explicit. Missing selections and unavailable models fail visibly rather
-than falling back to another installed model.
+than falling back to another installed model. The frontend exposes independent,
+model-specific effort controls only when the selected model advertises the
+`thinking` capability. Generic thinking families use Ollama's boolean Off / On
+values, GPT-OSS uses Low / Medium / High, and Gemma 4 also exposes Max. The
+selected value is sent explicitly with every relevant request.
+
+VLM Guide and Agent are orchestrated by `generation/pipeline.ts`. Before each
+generation they request a structured canvas decision and move Pull there. Guide
+then resolves generation text through the normal weighted prompt pool; Agent
+uses its returned instruction. After compositing the result, the pipeline
+appends the applied decision to bounded transient chat history, then requests
+and stores the next decision. The backend reconstructs Ollama `messages` from
+coordinates for Guide and coordinates plus instructions for Agent, attaching
+only the latest canvas image.
+`vlmAgentHistoryLimit` controls the retained coordinate count (20 by default, 0
+disables history).
+Bounded mode allocates the configured workspace once and centers existing
+content; unbounded mode sends the current composite so edge Pulls can expand it.
+Pending decisions, history, and workspace readiness are transient, while the
+editable Point, Guide, and Agent instruction templates persist independently.
 
 ## Lineage
 

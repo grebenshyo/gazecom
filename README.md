@@ -93,11 +93,14 @@ browser opens to gazeCOM. Then:
 | MSI | No | Yes | Computes a computer-vision saliency map from the camera |
 | Roam | No | No | Produces a momentum-based algorithmic walk |
 | Adaptive Roam | No | No | Alternates between exploratory, focused, and scanning patterns |
-| VLM | No | No | Uses a vision model to select a coordinate within the current frame or full canvas |
+| VLM | No | No | Uses a vision model to locate saliency, guide Pull, or choose the next canvas edit |
 
 Every source uses the same generation and composition pipeline, so modes can be
 switched without changing the selected workflow. Most sources feed the saliency
 heatmap and COM; canvas-scoped VLM tracking selects the next Pull frame directly.
+VLM Guide evaluates the complete canvas and steers that frame while the normal
+prompt pool controls what gets generated there. VLM Agent chooses both the frame
+and its image-editing instruction.
 
 Camera processing stays in the browser; gazeCOM does not upload webcam video.
 Camera-based modes require permission, and some tracker scripts/models are
@@ -125,7 +128,13 @@ be muted without changing their weights, then unmuted to restore the same pool
 configuration. Workflow and prompt values are relative weights and are
 normalized automatically; neither pool needs to total 100. Muted and
 zero-weight entries are excluded before normalization, and generation requires
-at least one positive, unmuted entry in each pool.
+at least one positive, unmuted entry in each pool. The exception is VLM Agent:
+its own instruction replaces the prompt pool while Agent tracking is active.
+Prompt text itself may be empty; an active blank slot sends an empty string to
+the selected workflow rather than inserting a fallback prompt.
+Prompt slots and new workflow pins start at weight `1`. The first workflow pin
+populates **Steps** from its authored `{steps:N}` default, while workflows
+without that placeholder leave the field blank.
 
 ### Prompting and models
 
@@ -138,14 +147,38 @@ LLM wrapper, where `{prompt}` marks the insertion point.
 Ollama model selection is explicit: fresh installations select nothing, and a
 removed model returns the relevant menu to blank instead of silently choosing
 another. Choose the text model under the Prompting cog and the vision model
-under **Advanced**. The sparkle button runs the selected tool once; automatic
-prompting cycles between off (`○`), send without replacing the slot (`↗`), and
-self-evolving replacement (`↻`). The per-slot vision button describes the
-current frame before generation and displays the returned prompt separately.
-VLM tracking can evaluate either the latest generated frame or the complete
-composite. In Canvas scope, the returned coordinate centers the Pull box and
-becomes the next 1024 × 1024 working frame. Select the scope below Mode when VLM
-tracking is active; the coordinate prompt appears there with it.
+under **Advanced**. Models that report Ollama's thinking capability also expose
+an effort menu containing only the modes accepted by the selected model
+(boolean-thinking models use **Off / On**, GPT-OSS uses
+**Low / Medium / High**, and Gemma 4 also exposes **Max**). Text and vision
+choices are independent and are included in settings export/import. The
+sparkle button runs the selected tool once; automatic
+prompting cycles between off (`○`), send
+without replacing the slot (`↗`), and self-evolving replacement (`↻`). The
+per-slot vision button describes the current frame before generation and
+displays the returned prompt separately.
+VLM tracking has three behaviors under **Tracking**. **Point** locates saliency
+in either the latest generated frame or the complete composite; Canvas scope
+centers Pull on the returned coordinate. **Guide** always evaluates the complete
+canvas and returns the next Pull coordinate. Its editable navigation prompt
+controls where the model looks, while the regular weighted prompt slots control
+what the selected workflow generates there. **Agent** also evaluates the complete
+canvas, but returns both the Pull coordinate and a generation instruction. That
+instruction appears under **Next action** and is passed directly to the workflow.
+
+With canvas limits enabled, Guide and Agent prepare the complete bounded workspace
+before their first decision and center any existing input inside it. Without
+limits, they evaluate the current composite; selecting an edge lets the next
+1024 × 1024 crop expand the canvas. They can begin from an input image or an
+empty canvas, and make the first decision before the first generation.
+After each successful patch, Guide retains previous coordinates, while Agent
+retains coordinates plus its applied instructions. Both use bounded Ollama chat
+history and submit only the latest canvas image. The behavior-specific
+**history** control sets how many decisions remain (20 by default; 0 disables
+continuity). Pausing tracking keeps that conversation; clearing or replacing the
+canvas, changing the relevant prompt/model/behavior/history, or changing canvas
+limits starts a new one. Point, Guide, and Agent instructions are editable and
+saved separately.
 
 ### Settings and portability
 
@@ -155,8 +188,8 @@ sections:
 
 - **General** configures the ComfyUI and Ollama hosts, Ollama model retention,
   provider-error behavior, and whether the welcome screen appears at startup.
-- **Interface** controls UI scale, frame zoom, and optional automatic collapse
-  of other panel sections when one is opened.
+- **Interface** controls UI scale and optional automatic collapse of other
+  panel sections when one is opened. Frame zoom is under **View** in the panel.
 - **Settings file** exports browser-persisted preferences as a versioned JSON
   file or imports them on another installation. This includes prompt slots,
   workflow pins, model choices, tracking profiles, and UI preferences.

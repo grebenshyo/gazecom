@@ -15,7 +15,7 @@ import {
   setOllamaHost as apiSetOllamaHost,
   setOllamaKeepModelLoaded as apiSetOllamaKeepModelLoaded,
 } from "../generation/api";
-import { Button, Slider, Toggle } from "./components";
+import { Button, Toggle } from "./components";
 import "./Drawers.css";
 
 const UI_SCALE_OPTIONS: ReadonlyArray<{ value: UIScale; label: string }> = [
@@ -127,15 +127,17 @@ function HelpPanel({
             </li>
             <li>
               Under Workflow, pin at least one workflow. Multiple selections
-              form a relative weighted pool; values do not need to total 100.
+              form a relative weighted pool; new pins start at weight 1 and
+              values do not need to total 100. The first pin fills Steps from
+              its declared <code>{"{steps:N}"}</code> default when available.
             </li>
             <li>
-              Choose an image and tracking mode under Settings, then start
+              Choose an image and tracking mode under Tracking, then start
               tracking to build a heatmap.
             </li>
             <li>
-              Enter a prompt and generate. Enable Iterative to repeat the cycle
-              automatically.
+              Enter a prompt and generate, or let VLM Agent supply the prompt.
+              Enable Iterative to repeat the cycle automatically.
             </li>
           </ol>
         </section>
@@ -162,12 +164,33 @@ function HelpPanel({
               and scanning behavior.
             </li>
             <li>
-              <strong>VLM</strong> asks the selected vision model for the most
+              <strong>VLM Point</strong> asks the selected vision model for a
               salient coordinate after each generation. Frame scope drives COM
               within the latest patch; Canvas scope evaluates the complete
-              composite and centers Pull on the selected location. Select the
-              scope and coordinate prompt directly below Mode. Its first
+              composite and centers Pull on the selected location. Its first
               feedback point starts at the exact frame center.
+            </li>
+            <li>
+              <strong>VLM Guide</strong> reads the complete canvas and chooses
+              the next Pull location. Its editable Guide prompt controls spatial
+              navigation; the normal weighted prompt slots control what gets
+              generated there.
+            </li>
+            <li>
+              <strong>VLM Agent</strong> reads the complete canvas and chooses
+              both the next Pull location and the image edit to perform there.
+              Its instruction appears under Next action and replaces the prompt
+              pool while Agent tracking is active. With canvas limits on, Guide
+              and Agent prepare the full workspace before the first decision;
+              without limits, edge decisions
+              expand the current composite. Both can start from an image or a
+              blank canvas. Applied coordinates, and Agent instructions when
+              applicable, remain in Ollama chat history while only the latest
+              canvas image is submitted. Pausing tracking preserves that context;
+              changing the canvas, behavior prompt, model, behavior, history
+              limit, or canvas limits starts a new conversation. The history
+              control sets how many decisions are remembered; 0 disables
+              continuity.
             </li>
           </ul>
           <p>
@@ -194,14 +217,18 @@ function HelpPanel({
             tokens are resolved independently. The cog also contains the Ollama
             model and editable LLM wrapper. <code>{"{prompt}"}</code> marks
             where the slot text enters that wrapper; without it, the text is
-            appended.
+            appended. When the selected model reports thinking support, an
+            effort menu appears beside it with only that model's accepted
+            values.
           </p>
           <p>
             The circle inside a slot's weight field temporarily mutes that
             prompt without changing its weight. Muted slots remain editable
             and return to the same pool configuration when unmuted. Muted and
             zero-weight slots are excluded from selection; generation requires
-            at least one positive, unmuted prompt.
+            at least one positive, unmuted slot. Prompt text may be empty: an
+            active blank slot sends an empty string to the workflow. New prompt
+            slots start at weight 1.
           </p>
           <ul className="gz-guide-symbols">
             <li>
@@ -225,6 +252,12 @@ function HelpPanel({
             current frame first, displays its derived prompt below the
             instruction, and sends that result directly to generation without a
             second enhancement pass.
+          </p>
+          <p>
+            Prompt-slot vision is separate from VLM tracking. VLM Guide moves the
+            generation frame, then the selected prompt slot follows its normal
+            direct, enhancement, evolution, or vision path. VLM Agent instead
+            owns the generation prompt while it is active.
           </p>
           <p>
             The ↺ control in each panel heading restores only that section to
@@ -310,6 +343,11 @@ function HelpPanel({
             </li>
           </ul>
           <p>
+            The Settings section groups heatmap appearance, dot rendering,
+            input-image selection, matte controls, Feedback, COM, Composite,
+            and Iterative controls.
+          </p>
+          <p>
             Enable <strong>Limit canvas size</strong> under Advanced to set a
             maximum width and height. The canvas grows naturally in whichever
             direction COM or Pull drives it until that size is reached. Further
@@ -340,14 +378,18 @@ function HelpPanel({
         <section id="guide-advanced" className="gz-guide-section">
           <h4>Advanced and view</h4>
           <p>
-            Advanced contains heatmap and composite matte colors, eyedropper
-            sampling, automatic download/clear intervals, canvas limits, the VLM
-            model, and WebGazer calibration-cache controls.
+            Advanced contains automatic download/clear intervals, canvas
+            limits, the VLM model, and WebGazer calibration-cache controls. A
+            model-specific effort menu appears beside a vision model that
+            supports thinking. VLM behavior, scope, Guide/Agent history,
+            editable behavior instructions, and Agent's next action are shown
+            below Mode when VLM is selected.
           </p>
           <p>
-            View controls frame visibility, fit target, pull-box display and
-            frame width, and Reset pos, which returns the box to the first patch
-            position. Hiding the heatmap frame does not stop tracking.
+            View controls frame zoom and visibility, fit target, pull-box
+            display and frame width, and Reset pos, which returns the box to the
+            first patch position. Hiding the heatmap frame does not stop
+            tracking.
           </p>
         </section>
 
@@ -357,8 +399,8 @@ function HelpPanel({
             The Settings drawer is organized as General, Interface, and Settings
             file. General contains the ComfyUI and Ollama hosts, Ollama model
             retention, provider-error behavior, and the welcome-screen option.
-            Interface controls UI scale, frame zoom, and optional auto-collapse
-            behavior for panel sections.
+            Interface controls UI scale and optional auto-collapse behavior for
+            panel sections.
           </p>
           <p>
             Keep Ollama loaded to avoid model reloads when it runs on a separate
@@ -389,7 +431,6 @@ function SettingsPanel({
   const showWelcome = useStore((s) => s.showWelcome);
   const skipProviderErrors = useStore((s) => s.skipProviderErrors);
   const uiScale = useStore((s) => s.uiScale);
-  const frameZoom = useStore((s) => s.frameZoom);
   const autoCollapsePanels = useStore((s) => s.autoCollapsePanels);
   const set = useStore((s) => s.set);
 
@@ -631,14 +672,6 @@ function SettingsPanel({
               </Button>
             ))}
           </div>
-          <Slider
-            label="Frame zoom"
-            value={frameZoom}
-            min={40}
-            max={100}
-            step={5}
-            onChange={(v) => set("frameZoom", v)}
-          />
           <Toggle
             label="Auto-collapse panels"
             checked={autoCollapsePanels}

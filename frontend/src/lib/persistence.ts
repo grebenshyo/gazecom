@@ -47,11 +47,18 @@ export const StorageKeys = {
   promptList: "gengaze.promptList",
   pinnedPrompts: "gengaze.pinnedPrompts",
   llmModel: "gengaze.llmModel",
+  llmThinkingMode: "gengaze.llmThinkingMode",
   vlmModel: "gengaze.vlmModel",
+  vlmThinkingMode: "gengaze.vlmThinkingMode",
+  vlmBehavior: "gengaze.vlmBehavior",
+  vlmAgentHistoryLimit: "gengaze.vlmAgentHistoryLimit",
   vlmScope: "gengaze.vlmScope",
   llmEnhancePrompt: "gengaze.llmEnhancePrompt",
   vlmPointPrompt: "gengaze.vlmPointPrompt",
+  vlmGuidePrompt: "gengaze.vlmGuidePrompt",
+  vlmAgentPrompt: "gengaze.vlmAgentPrompt",
   vlmPointPromptHeight: "gengaze.vlmPointPromptHeight",
+  vlmAgentActionHeight: "gengaze.vlmAgentActionHeight",
   // ui
   theme: "gengaze.theme",
   panelPosition: "gengaze.panelPosition",
@@ -231,10 +238,12 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "frameZoom":
     case "boundsWidth":
     case "boundsHeight":
-    case "steps":
     case "cropBoxBorderWidth":
     case "vlmPointPromptHeight":
+    case "vlmAgentActionHeight":
       return isFiniteNumber(value);
+    case "steps":
+      return value === null || isFiniteNumber(value);
     case "autoDownloadEvery":
     case "autoClearEvery":
       return value === null || isFiniteNumber(value);
@@ -251,7 +260,21 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "vlmModel":
     case "llmEnhancePrompt":
     case "vlmPointPrompt":
+    case "vlmGuidePrompt":
+    case "vlmAgentPrompt":
       return typeof value === "string";
+    case "vlmBehavior":
+      return isOneOf(value, ["point", "guide", "agent"]);
+    case "vlmAgentHistoryLimit":
+      return (
+        isFiniteNumber(value) &&
+        Number.isInteger(value) &&
+        value >= 0 &&
+        value <= 100
+      );
+    case "llmThinkingMode":
+    case "vlmThinkingMode":
+      return isOneOf(value, ["off", "on", "low", "medium", "high", "max"]);
     case "vlmScope":
       return isOneOf(value, ["frame", "canvas"]);
     case "pinnedPrompts":

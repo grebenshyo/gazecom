@@ -26,7 +26,7 @@ import {
 const baseOnly = (): PromptSlots => [
   {
     text: "",
-    weight: 100,
+    weight: 1,
     height: null,
     autoEnhanceMode: "off",
     visionEnabled: false,
@@ -36,12 +36,12 @@ const baseOnly = (): PromptSlots => [
 ];
 
 describe("addPromptSlot", () => {
-  it("appends an empty slot at the end (weight 0, height null)", () => {
+  it("appends an empty slot at the end (weight 1, height null)", () => {
     const next = addPromptSlot(baseOnly());
     expect(next).toEqual([
       {
         text: "",
-        weight: 100,
+        weight: 1,
         height: null,
         autoEnhanceMode: "off",
         visionEnabled: false,
@@ -50,7 +50,7 @@ describe("addPromptSlot", () => {
       },
       {
         text: "",
-        weight: 0,
+        weight: 1,
         muted: false,
         height: null,
         autoEnhanceMode: "off",
@@ -68,7 +68,7 @@ describe("addPromptSlot", () => {
     expect(s.length).toBe(3);
     // Base stays first.
     expect(s[0].text).toBe("");
-    expect(s[0].weight).toBe(100);
+    expect(s[0].weight).toBe(1);
   });
 
   it("does not mutate the input", () => {
@@ -377,7 +377,7 @@ describe("promptPoolIsValid", () => {
     expect(promptPoolIsValid([])).toBe(false);
   });
 
-  it("accepts any total with a nonblank, positive, unmuted slot", () => {
+  it("accepts any total with a positive, unmuted slot", () => {
     expect(
       promptPoolIsValid([
         { text: "first", weight: 12, height: null },
@@ -389,7 +389,7 @@ describe("promptPoolIsValid", () => {
     ).toBe(true);
   });
 
-  it("requires at least one nonblank, positive, unmuted slot", () => {
+  it("requires at least one positive, unmuted slot", () => {
     const slots: PromptSlots = [
       { text: "a", weight: 60, height: null },
       { text: "b", weight: 40, height: null, muted: true },
@@ -411,7 +411,7 @@ describe("promptPoolIsValid", () => {
         { text: "", weight: 100, height: null },
         { text: "   ", weight: 100, height: null },
       ]),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
@@ -490,23 +490,23 @@ describe("pickPromptSlot", () => {
     expect(pickPromptSlot(slots, () => 0)).toEqual({ text: "b", index: 1 });
   });
 
-  it("skips blank slots while retaining original indices", () => {
+  it("includes blank slots in relative weighting", () => {
     const slots: PromptSlots = [
       { text: "   ", weight: 50, height: null },
       { text: "usable", weight: 30, height: null },
       { text: "", weight: 20, height: null },
     ];
     expect(pickPromptSlot(slots, () => 0.9)).toEqual({
-      text: "usable",
-      index: 1,
+      text: "",
+      index: 2,
     });
   });
 
-  it("returns null when every weighted slot is blank", () => {
+  it("returns an empty prompt when every weighted slot is blank", () => {
     const slots: PromptSlots = [
       { text: "", weight: 50, height: null },
       { text: "   ", weight: 50, height: null },
     ];
-    expect(pickPromptSlot(slots)).toBeNull();
+    expect(pickPromptSlot(slots, () => 0)).toEqual({ text: "", index: 0 });
   });
 });

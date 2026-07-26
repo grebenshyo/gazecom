@@ -27,7 +27,9 @@ import { ThemeToggle } from "./ThemeToggle";
 import {
   useStore,
   type LLMModel,
+  type OllamaThinkingMode,
   type TrackingMode,
+  type VLMBehavior,
   type VLMScope,
 } from "../store";
 import { compositeStore } from "../canvas/CompositeStore";
@@ -38,6 +40,8 @@ import {
   fetchLlmModels,
   fetchWorkflows,
   uploadImage,
+  type OllamaModelInfo,
+  type OllamaThink,
 } from "../generation/api";
 import { OllamaLLMProvider, OllamaVLMProvider } from "../generation/llm";
 import {
@@ -101,6 +105,37 @@ const VLM_SCOPE_OPTIONS: ReadonlyArray<{ value: VLMScope; label: string }> = [
   { value: "frame", label: "Frame" },
   { value: "canvas", label: "Canvas" },
 ];
+
+const VLM_BEHAVIOR_OPTIONS: ReadonlyArray<{
+  value: VLMBehavior;
+  label: string;
+}> = [
+  { value: "point", label: "Point" },
+  { value: "guide", label: "Guide" },
+  { value: "agent", label: "Agent" },
+];
+
+const OLLAMA_THINKING_LABELS: Record<OllamaThinkingMode, string> = {
+  off: "Off",
+  on: "On",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  max: "Max",
+};
+
+function ollamaThinkValue(mode: OllamaThinkingMode): OllamaThink {
+  if (mode === "off") return false;
+  if (mode === "on") return true;
+  return mode;
+}
+
+function thinkingOptions(modes: OllamaThinkingMode[]) {
+  return modes.map((value) => ({
+    value,
+    label: OLLAMA_THINKING_LABELS[value],
+  }));
+}
 
 const AUTO_ENHANCE_ICONS: Record<PromptAutoEnhanceMode, string> = {
   off: "○",
@@ -169,13 +204,14 @@ export function ControlPanel({
   const [enhancingSlotIndex, setEnhancingSlotIndex] = useState<number | null>(
     null,
   );
-  const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [llmModels, setLlmModels] = useState<OllamaModelInfo[]>([]);
   const [llmModelsStatus, setLlmModelsStatus] = useState<
     "idle" | "loading" | "loaded" | "error"
   >("idle");
   const [matteColorDraft, setMatteColorDraft] = useState(s.matteColor);
   const selectedImageSeedRef = useRef<string | null>(null);
   const vlmPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const vlmAgentActionRef = useRef<HTMLTextAreaElement | null>(null);
 
   /**
    * Whether the prompt controls (List / Template / LLM prompt / models) are shown
@@ -213,7 +249,29 @@ export function ControlPanel({
       if (timer !== null) window.clearTimeout(timer);
       observer.disconnect();
     };
-  }, [s.panelMinimized, s.trackingMode]);
+  }, [s.panelMinimized, s.trackingMode, s.vlmBehavior]);
+
+  useEffect(() => {
+    if (s.trackingMode !== "vlm" || s.vlmBehavior !== "agent") return;
+    const textarea = vlmAgentActionRef.current;
+    if (!textarea) return;
+    let timer: number | null = null;
+    const saveHeight = () => {
+      const height = textarea.offsetHeight;
+      if (height > 0 && height !== useStore.getState().vlmAgentActionHeight) {
+        useStore.getState().set("vlmAgentActionHeight", height);
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(saveHeight, 250);
+    });
+    observer.observe(textarea);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [s.panelMinimized, s.trackingMode, s.vlmBehavior]);
 
   const setMatteColor = (value: string) => {
     const color = normalizeMatteColor(value);
@@ -233,21 +291,49 @@ export function ControlPanel({
     }
   };
 
-  const applyFetchedLlmModels = (models: string[]): string[] => {
-    const clean = [...new Set(models.map((m) => m.trim()).filter(Boolean))].sort(
-      (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }),
+  const applyFetchedLlmModels = (models: OllamaModelInfo[]): string[] => {
+    const byName = new Map<string, OllamaModelInfo>();
+    for (const model of models) {
+      const name = model.name.trim();
+      if (!name) continue;
+      byName.set(name, {
+        name,
+        capabilities: [
+          ...new Set(model.capabilities.filter((item) => typeof item === "string")),
+        ],
+        thinking_modes: [
+          ...new Set(
+            (model.thinking_modes ?? []).filter(
+              (mode): mode is OllamaThinkingMode =>
+                mode in OLLAMA_THINKING_LABELS,
+            ),
+          ),
+        ],
+      });
+    }
+    const clean = [...byName.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
     setLlmModels(clean);
     setLlmModelsStatus("loaded");
+    useStore.getState().patch({
+      ollamaModelCapabilities: Object.fromEntries(
+        clean.map((model) => [model.name, model.capabilities]),
+      ),
+      ollamaModelThinkingModes: Object.fromEntries(
+        clean.map((model) => [model.name, model.thinking_modes]),
+      ),
+    });
+    const names = clean.map((model) => model.name);
     const current = useStore.getState().llmModel;
-    if (current && !clean.includes(current)) {
+    if (current && !names.includes(current)) {
       useStore.getState().set("llmModel", "");
     }
     const currentVision = useStore.getState().vlmModel;
-    if (currentVision && !clean.includes(currentVision)) {
+    if (currentVision && !names.includes(currentVision)) {
       useStore.getState().set("vlmModel", "");
     }
-    return clean;
+    return names;
   };
 
   const refreshLlmModels = async (): Promise<string[]> => {
@@ -263,7 +349,7 @@ export function ControlPanel({
   };
 
   const ensureSelectedLlmModel = async (): Promise<string> => {
-    let models = llmModels;
+    let models = llmModels.map((model) => model.name);
     if (llmModelsStatus !== "loaded" || models.length === 0) {
       models = await refreshLlmModels();
     }
@@ -281,7 +367,7 @@ export function ControlPanel({
   };
 
   const ensureSelectedVlmModel = async (): Promise<string> => {
-    let models = llmModels;
+    let models = llmModels.map((model) => model.name);
     if (llmModelsStatus !== "loaded" || models.length === 0) {
       models = await refreshLlmModels();
     }
@@ -401,6 +487,10 @@ export function ControlPanel({
           baseImgPosition: { x: 0, y: 0, width: 1024, height: 1024 },
           baseCOM: { x: 0.5, y: 0.5 },
           isComposited: false,
+          vlmPoint: null,
+          vlmAgentAction: null,
+          vlmAgentHistory: [],
+          vlmAgentWorkspaceReady: false,
         });
       } catch (err) {
         if (!cancelled) {
@@ -423,14 +513,50 @@ export function ControlPanel({
     availableWorkflows.map((workflow) => [workflow.path, workflow]),
   );
   const promptHasActiveSlot = promptPoolHasActiveSlot(s.pinnedPrompts);
+  const agentControlsPrompt =
+    s.trackingMode === "vlm" && s.vlmBehavior === "agent";
   const llmModelOptions = (() => {
     const placeholder =
       llmModelsStatus === "loading" ? "Loading models..." : "Select model...";
     return [
       { value: "", label: placeholder },
-      ...llmModels.map((model) => ({ value: model, label: model })),
+      ...llmModels.map((model) => ({ value: model.name, label: model.name })),
     ];
   })();
+  const llmThinkingModes = s.ollamaModelThinkingModes[s.llmModel] ?? [];
+  const vlmThinkingModes = s.ollamaModelThinkingModes[s.vlmModel] ?? [];
+  const llmThinkingOptions = thinkingOptions(llmThinkingModes);
+  const vlmThinkingOptions = thinkingOptions(vlmThinkingModes);
+  const llmSupportsThinking = llmThinkingModes.length > 0;
+  const vlmSupportsThinking = vlmThinkingModes.length > 0;
+
+  useEffect(() => {
+    const state = useStore.getState();
+    const selections: Array<{
+      modes: OllamaThinkingMode[];
+      current: OllamaThinkingMode;
+      key: "llmThinkingMode" | "vlmThinkingMode";
+    }> = [
+      {
+        modes: state.ollamaModelThinkingModes[state.llmModel] ?? [],
+        current: state.llmThinkingMode,
+        key: "llmThinkingMode",
+      },
+      {
+        modes: state.ollamaModelThinkingModes[state.vlmModel] ?? [],
+        current: state.vlmThinkingMode,
+        key: "vlmThinkingMode",
+      },
+    ];
+    for (const selection of selections) {
+      if (
+        selection.modes.length > 0 &&
+        !selection.modes.includes(selection.current)
+      ) {
+        state.set(selection.key, selection.modes[0]);
+      }
+    }
+  }, [s.llmModel, s.vlmModel, s.ollamaModelThinkingModes]);
 
   // Drag handle: when the user grabs the title bar, track pointer until
   // release. Position is committed to the store on each move so it
@@ -506,19 +632,157 @@ export function ControlPanel({
         <>
       {/*
         Section layout:
-          - Prompting / Workflow: primary creative controls, default expanded.
-          - Settings / Advanced / View: configuration, default collapsed
-            (declutters the panel until the user opts in). Settings holds
-            tracking mode + heatmap/dot tuning + the generation toggles.
+          - Tracking comes first so mode selection is immediately visible.
+          - Tracking / Prompting / Workflow default expanded.
+          - Settings / Advanced / View default collapsed.
         Default expanded/collapsed states live in DEFAULT_SECTION_EXPANDED
         below; the user's per-section toggles are persisted via
         s.sectionsExpanded.
       */}
 
       <Section
+        title="Tracking"
+        sectionKey="tracking"
+        collapsible
+        onReset={() => s.resetSection("tracking")}
+      >
+        <Dropdown<TrackingMode>
+          label="Mode"
+          value={s.trackingMode}
+          options={TRACKING_MODE_OPTIONS}
+          onChange={(v) => s.set("trackingMode", v)}
+        />
+        {s.trackingMode === "vlm" && (
+          <>
+            <Dropdown<VLMBehavior>
+              label="Behavior"
+              value={s.vlmBehavior}
+              options={VLM_BEHAVIOR_OPTIONS}
+              onChange={(v) => s.set("vlmBehavior", v)}
+            />
+            {s.vlmBehavior !== "point" && (
+              <NumberInput
+                label="History"
+                value={s.vlmAgentHistoryLimit}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(v) => s.set("vlmAgentHistoryLimit", v)}
+              />
+            )}
+            {s.vlmBehavior === "point" && (
+              <Dropdown<VLMScope>
+                label="VLM scope"
+                value={s.vlmScope}
+                options={VLM_SCOPE_OPTIONS}
+                onChange={(v) => s.set("vlmScope", v)}
+              />
+            )}
+            <div className="gz-prompt-settings-textarea">
+              <label
+                className="gz-prompt-settings-textarea__label"
+                htmlFor="gz-vlm-tracking-prompt"
+              >
+                {s.vlmBehavior === "agent"
+                  ? "Agent prompt"
+                  : s.vlmBehavior === "guide"
+                    ? "Guide prompt"
+                    : "VLM prompt"}
+              </label>
+              <textarea
+                id="gz-vlm-tracking-prompt"
+                ref={vlmPromptRef}
+                className="gz-prompt-settings-textarea__input"
+                value={
+                  s.vlmBehavior === "agent"
+                    ? s.vlmAgentPrompt
+                    : s.vlmBehavior === "guide"
+                      ? s.vlmGuidePrompt
+                      : s.vlmPointPrompt
+                }
+                spellCheck={false}
+                rows={3}
+                style={{ height: s.vlmPointPromptHeight }}
+                onChange={(e) =>
+                  s.set(
+                    s.vlmBehavior === "agent"
+                      ? "vlmAgentPrompt"
+                      : s.vlmBehavior === "guide"
+                        ? "vlmGuidePrompt"
+                        : "vlmPointPrompt",
+                    e.target.value,
+                  )
+                }
+                onPointerUp={(e) => {
+                  const height = e.currentTarget.offsetHeight;
+                  if (height > 0) s.set("vlmPointPromptHeight", height);
+                }}
+              />
+              {s.vlmBehavior === "agent" && (
+                <textarea
+                  ref={vlmAgentActionRef}
+                  className="gz-prompt-slot__derived"
+                  aria-label="Next Agent action"
+                  value={
+                    s.vlmAgentAction && "instruction" in s.vlmAgentAction
+                      ? s.vlmAgentAction.instruction
+                      : ""
+                  }
+                  placeholder="Next action will appear here..."
+                  readOnly
+                  rows={2}
+                  style={{ height: s.vlmAgentActionHeight }}
+                  onPointerUp={(e) => {
+                    const height = e.currentTarget.offsetHeight;
+                    if (height > 0) s.set("vlmAgentActionHeight", height);
+                  }}
+                />
+              )}
+            </div>
+          </>
+        )}
+        {/* Speed only applies to the synthetic roamers (roam / roam2) —
+            real-input trackers have no travel speed to scale. */}
+        {(s.trackingMode === "roam" || s.trackingMode === "roam2") && (
+          <Slider
+            label="Roam speed"
+            value={s.roamSpeed}
+            min={0.1}
+            max={3}
+            step={0.1}
+            onChange={(v) => s.set("roamSpeed", v)}
+          />
+        )}
+        {s.trackingMode === "webgazer" && (
+          <Slider
+            label="Event history"
+            value={s.eventHistoryLength}
+            min={100}
+            max={5000}
+            step={100}
+            onChange={(v) => s.set("eventHistoryLength", v)}
+          />
+        )}
+        {/* Trail length shapes the heatmap smear; applies to every
+            trail-based tracker except WebGazer's event history and the
+            single-point VLM mode. */}
+        {s.trackingMode !== "webgazer" && s.trackingMode !== "vlm" && (
+          <Slider
+            label="Trail length"
+            value={s.trailLength}
+            min={10}
+            max={1000}
+            step={10}
+            onChange={(v) => s.set("trailLength", v)}
+          />
+        )}
+      </Section>
+
+      <Section
         title="Prompting"
         sectionKey="prompting"
         collapsible
+        disabled={agentControlsPrompt}
         headerAction={
           <span
             className="gz-section__cog"
@@ -652,6 +916,9 @@ export function ControlPanel({
                   const vlmModel = await ensureSelectedVlmModel();
                   const described = await new OllamaVLMProvider(
                     vlmModel,
+                    vlmSupportsThinking
+                      ? ollamaThinkValue(useStore.getState().vlmThinkingMode)
+                      : undefined,
                   ).describe(image, instruction);
                   if (!described.trim()) {
                     throw new Error("VLM returned an empty prompt.");
@@ -670,7 +937,12 @@ export function ControlPanel({
 
                 const model = await ensureSelectedLlmModel();
                 const template = useStore.getState().llmEnhancePrompt;
-                const enhanced = await new OllamaLLMProvider(model).enhance(
+                const enhanced = await new OllamaLLMProvider(
+                  model,
+                  llmSupportsThinking
+                    ? ollamaThinkValue(useStore.getState().llmThinkingMode)
+                    : undefined,
+                ).enhance(
                   instruction,
                   template,
                 );
@@ -699,10 +971,9 @@ export function ControlPanel({
         >
           + Add prompt slot
         </Button>
-        {!promptHasActiveSlot && (
+        {!promptHasActiveSlot && !agentControlsPrompt && (
           <p className="gz-pool-warning">
-            Enter text in an unmuted prompt slot with a weight above 0 to
-            generate.
+            Unmute a prompt slot or give one a weight above 0 to generate.
           </p>
         )}
         {/* List / Template / LLM controls — revealed by the ⚙ in
@@ -760,6 +1031,14 @@ export function ControlPanel({
               onChange={(v) => s.set("llmModel", v)}
               disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
             />
+            {llmSupportsThinking && (
+              <Dropdown<OllamaThinkingMode>
+                label="LLM effort"
+                value={s.llmThinkingMode}
+                options={llmThinkingOptions}
+                onChange={(v) => s.set("llmThinkingMode", v)}
+              />
+            )}
             <label className="gz-prompt-settings-textarea">
               <span className="gz-prompt-settings-textarea__label">
                 LLM prompt
@@ -811,11 +1090,17 @@ export function ControlPanel({
             workflows={availableWorkflows}
             pinnedPaths={new Set(Object.keys(s.pinnedWorkflows))}
             onSelect={(picked) => {
+              const firstPin = Object.keys(s.pinnedWorkflows).length === 0;
+              const descriptor = workflowByPath.get(picked);
               s.patch({
                 pinnedWorkflows: addToPool(s.pinnedWorkflows, picked),
                 mutedWorkflows: s.mutedWorkflows.filter(
                   (path) => path !== picked,
                 ),
+                steps: firstPin ? (descriptor?.default_steps ?? null) : s.steps,
+                lastPickedWorkflow: firstPin
+                  ? picked
+                  : s.lastPickedWorkflow,
               });
             }}
           />
@@ -886,17 +1171,24 @@ export function ControlPanel({
                     type="button"
                     aria-label={`Remove ${path}`}
                     title="Remove from pool"
-                    onClick={() =>
+                    onClick={() => {
+                      const pinnedWorkflows = removeFromPool(
+                        s.pinnedWorkflows,
+                        path,
+                      );
+                      const poolEmpty = Object.keys(pinnedWorkflows).length === 0;
                       s.patch({
-                        pinnedWorkflows: removeFromPool(
-                          s.pinnedWorkflows,
-                          path,
-                        ),
+                        pinnedWorkflows,
                         mutedWorkflows: s.mutedWorkflows.filter(
                           (item) => item !== path,
                         ),
-                      })
-                    }
+                        steps: poolEmpty ? null : s.steps,
+                        lastPickedWorkflow:
+                          poolEmpty || s.lastPickedWorkflow === path
+                            ? null
+                            : s.lastPickedWorkflow,
+                      });
+                    }}
                   >
                     ×
                   </button>
@@ -913,9 +1205,14 @@ export function ControlPanel({
             min={1}
             max={999}
             step={1}
-            value={s.steps}
+            value={s.steps ?? ""}
             onChange={(event) => {
-              const value = Number(event.target.value);
+              const raw = event.target.value;
+              if (raw === "") {
+                s.set("steps", null);
+                return;
+              }
+              const value = Number(raw);
               if (Number.isFinite(value)) s.set("steps", Math.max(1, value));
             }}
           />
@@ -928,176 +1225,165 @@ export function ControlPanel({
         collapsible
         onReset={() => s.resetSection("settings")}
       >
-        <Dropdown<TrackingMode>
-          label="Mode"
-          value={s.trackingMode}
-          options={TRACKING_MODE_OPTIONS}
-          onChange={(v) => s.set("trackingMode", v)}
-        />
-        {s.trackingMode === "vlm" && (
-          <>
-            <Dropdown<VLMScope>
-              label="VLM scope"
-              value={s.vlmScope}
-              options={VLM_SCOPE_OPTIONS}
-              onChange={(v) => s.set("vlmScope", v)}
+          <Dropdown<HeatmapStyleName>
+            label="Heatmap"
+            value={s.heatmapStyle}
+            options={HEATMAP_STYLE_OPTIONS}
+            onChange={(v) => s.set("heatmapStyle", v)}
+          />
+          {/* Gaze-dot radius + its random variation. Mode-agnostic — every
+              tracker's points render through the heatmap. */}
+          <Slider
+            label="Dot size"
+            value={s.pointSize}
+            min={5}
+            max={200}
+            step={5}
+            onChange={(v) => s.set("pointSize", v)}
+          />
+          <Slider
+            label="Dot size jitter"
+            value={s.pointJitter}
+            min={0}
+            max={50}
+            step={5}
+            onChange={(v) => s.set("pointJitter", v)}
+          />
+          {s.availableImages.length > 0 ? (
+            <Dropdown
+              label="Image"
+              value={s.selectedImage ?? s.availableImages[0]}
+              options={s.availableImages.map((name) => ({
+                value: name,
+                label: name,
+              }))}
+              onChange={(v) => s.set("selectedImage", v)}
             />
-            {/* Coordinate instruction used only by the VLM tracker. Prompt-slot
-                vision uses each slot's own text instead. */}
-            <label className="gz-prompt-settings-textarea">
-              <span className="gz-prompt-settings-textarea__label">
-                VLM prompt
-              </span>
-              <textarea
-                ref={vlmPromptRef}
-                className="gz-prompt-settings-textarea__input"
-                value={s.vlmPointPrompt}
-                spellCheck={false}
-                rows={3}
-                style={{ height: s.vlmPointPromptHeight }}
-                onChange={(e) => s.set("vlmPointPrompt", e.target.value)}
-                onPointerUp={(e) => {
-                  const height = e.currentTarget.offsetHeight;
-                  if (height > 0) s.set("vlmPointPromptHeight", height);
-                }}
-              />
-            </label>
-          </>
-        )}
-        {/* Speed only applies to the synthetic roamers (roam / roam2) —
-            real-input trackers have no travel speed to scale. */}
-        {(s.trackingMode === "roam" || s.trackingMode === "roam2") && (
-          <Slider
-            label="Roam speed"
-            value={s.roamSpeed}
-            min={0.1}
-            max={3}
-            step={0.1}
-            onChange={(v) => s.set("roamSpeed", v)}
-          />
-        )}
-        {s.trackingMode === "webgazer" && (
-          <Slider
-            label="Event history"
-            value={s.eventHistoryLength}
-            min={100}
-            max={5000}
-            step={100}
-            onChange={(v) => s.set("eventHistoryLength", v)}
-          />
-        )}
-        {/* Trail length shapes the heatmap smear; applies to every
-            trail-based tracker except WebGazer's event history and the
-            single-point VLM mode. */}
-        {s.trackingMode !== "webgazer" && s.trackingMode !== "vlm" && (
-          <Slider
-            label="Trail length"
-            value={s.trailLength}
-            min={10}
-            max={1000}
-            step={10}
-            onChange={(v) => s.set("trailLength", v)}
-          />
-        )}
-        <Dropdown<HeatmapStyleName>
-          label="Heatmap"
-          value={s.heatmapStyle}
-          options={HEATMAP_STYLE_OPTIONS}
-          onChange={(v) => s.set("heatmapStyle", v)}
-        />
-        {/* Gaze-dot radius + its random variation. Mode-agnostic — every
-            tracker's points render through the heatmap. */}
-        <Slider
-          label="Dot size"
-          value={s.pointSize}
-          min={5}
-          max={200}
-          step={5}
-          onChange={(v) => s.set("pointSize", v)}
-        />
-        <Slider
-          label="Dot size jitter"
-          value={s.pointJitter}
-          min={0}
-          max={50}
-          step={5}
-          onChange={(v) => s.set("pointJitter", v)}
-        />
-        {s.availableImages.length > 0 ? (
-          <Dropdown
-            label="Image"
-            value={s.selectedImage ?? s.availableImages[0]}
-            options={s.availableImages.map((name) => ({
-              value: name,
-              label: name,
-            }))}
-            onChange={(v) => s.set("selectedImage", v)}
-          />
-        ) : (
-          <p className="gz-empty">No images on the server.</p>
-        )}
-        {/* Upload — replaces legacy ui-controller.js:747-826. */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (!file) return;
-            if (!file.type.startsWith("image/")) {
-              alert("Please choose an image file.");
-              return;
-            }
-            try {
-              const { filename } = await uploadImage(file);
-              const list = useStore.getState().availableImages;
-              if (!list.includes(filename)) {
-                useStore.getState().set("availableImages", [filename, ...list]);
+          ) : (
+            <p className="gz-empty">No images on the server.</p>
+          )}
+          {/* Upload — replaces legacy ui-controller.js:747-826. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              if (!file.type.startsWith("image/")) {
+                alert("Please choose an image file.");
+                return;
               }
-              useStore.getState().set("selectedImage", filename);
-            } catch (err) {
-              alert(`Upload failed: ${(err as Error).message}`);
-            }
-          }}
-        />
-        <Button
-          variant="secondary"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          Upload image
-        </Button>
-        <div className="gz-row">
+              try {
+                const { filename } = await uploadImage(file);
+                const list = useStore.getState().availableImages;
+                if (!list.includes(filename)) {
+                  useStore
+                    .getState()
+                    .set("availableImages", [filename, ...list]);
+                }
+                useStore.getState().set("selectedImage", filename);
+              } catch (err) {
+                alert(`Upload failed: ${(err as Error).message}`);
+              }
+            }}
+          />
+          <Button
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload image
+          </Button>
+          <div className="gz-row">
+            <Toggle
+              label="Comp matte"
+              checked={s.compositeMatteEnabled}
+              onChange={(v) => s.set("compositeMatteEnabled", v)}
+            />
+            <Toggle
+              label="Heatmap matte"
+              checked={s.heatmapMatteEnabled}
+              onChange={(v) => s.set("heatmapMatteEnabled", v)}
+            />
+          </div>
+          <div
+            className="gz-matte-row"
+            aria-disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
+          >
+            <input
+              className="gz-matte-row__color"
+              type="color"
+              value={s.matteColor}
+              disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
+              aria-label="Matte color"
+              title="Matte color"
+              onChange={(e) => setMatteColor(e.target.value)}
+            />
+            <input
+              className="gz-matte-row__hex"
+              type="text"
+              value={matteColorDraft}
+              disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
+              spellCheck={false}
+              aria-label="Matte color hex"
+              title="Matte color hex"
+              onChange={(e) => {
+                const next = e.target.value;
+                setMatteColorDraft(next);
+                const color = normalizeMatteColor(next);
+                if (color) s.set("matteColor", color);
+              }}
+              onBlur={() => setMatteColorDraft(s.matteColor)}
+            />
+            <button
+              className="gz-matte-row__sample"
+              type="button"
+              disabled={
+                (!s.compositeMatteEnabled && !s.heatmapMatteEnabled) ||
+                !(window as WindowWithEyeDropper).EyeDropper
+              }
+              title={
+                (window as WindowWithEyeDropper).EyeDropper
+                  ? "Sample matte color from the screen"
+                  : "Eyedropper is not supported in this browser"
+              }
+              onClick={() => void sampleMatteColor()}
+            >
+              sample
+            </button>
+          </div>
+          <div className="gz-row">
+            <Toggle
+              label="Feedback"
+              checked={s.feedbackMode}
+              onChange={(v) => s.set("feedbackMode", v)}
+            />
+            <Toggle
+              label="COM"
+              checked={s.comMode}
+              onChange={(v) => s.set("comMode", v)}
+            />
+          </div>
           <Toggle
-            label="Feedback"
-            checked={s.feedbackMode}
-            onChange={(v) => s.set("feedbackMode", v)}
+            label="Composite"
+            checked={s.compositeMode}
+            onChange={(v) => s.set("compositeMode", v)}
           />
           <Toggle
-            label="COM"
-            checked={s.comMode}
-            onChange={(v) => s.set("comMode", v)}
+            label="Iterative"
+            checked={s.iterativeMode}
+            onChange={(v) => s.set("iterativeMode", v)}
           />
-        </div>
-        <Toggle
-          label="Composite"
-          checked={s.compositeMode}
-          onChange={(v) => s.set("compositeMode", v)}
-        />
-        <Toggle
-          label="Iterative"
-          checked={s.iterativeMode}
-          onChange={(v) => s.set("iterativeMode", v)}
-        />
-        <Slider
-          label="Iterative delay (s)"
-          value={s.iterativeDelay}
-          min={0}
-          max={60}
-          onChange={(v) => s.set("iterativeDelay", v)}
-          disabled={!s.iterativeMode}
-        />
+          <Slider
+            label="Iterative delay (s)"
+            value={s.iterativeDelay}
+            min={0}
+            max={60}
+            onChange={(v) => s.set("iterativeDelay", v)}
+            disabled={!s.iterativeMode}
+          />
       </Section>
 
       <Section
@@ -1106,64 +1392,6 @@ export function ControlPanel({
         collapsible
         onReset={() => s.resetSection("advanced")}
       >
-        <div className="gz-row">
-          <Toggle
-            label="Comp matte"
-            checked={s.compositeMatteEnabled}
-            onChange={(v) => s.set("compositeMatteEnabled", v)}
-          />
-          <Toggle
-            label="Heatmap matte"
-            checked={s.heatmapMatteEnabled}
-            onChange={(v) => s.set("heatmapMatteEnabled", v)}
-          />
-        </div>
-        <div
-          className="gz-matte-row"
-          aria-disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
-        >
-          <input
-            className="gz-matte-row__color"
-            type="color"
-            value={s.matteColor}
-            disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
-            aria-label="Matte color"
-            title="Matte color"
-            onChange={(e) => setMatteColor(e.target.value)}
-          />
-          <input
-            className="gz-matte-row__hex"
-            type="text"
-            value={matteColorDraft}
-            disabled={!s.compositeMatteEnabled && !s.heatmapMatteEnabled}
-            spellCheck={false}
-            aria-label="Matte color hex"
-            title="Matte color hex"
-            onChange={(e) => {
-              const next = e.target.value;
-              setMatteColorDraft(next);
-              const color = normalizeMatteColor(next);
-              if (color) s.set("matteColor", color);
-            }}
-            onBlur={() => setMatteColorDraft(s.matteColor)}
-          />
-          <button
-            className="gz-matte-row__sample"
-            type="button"
-            disabled={
-              (!s.compositeMatteEnabled && !s.heatmapMatteEnabled) ||
-              !(window as WindowWithEyeDropper).EyeDropper
-            }
-            title={
-              (window as WindowWithEyeDropper).EyeDropper
-                ? "Sample matte color from the screen"
-                : "Eyedropper is not supported in this browser"
-            }
-            onClick={() => void sampleMatteColor()}
-          >
-            sample
-          </button>
-        </div>
         {/* Auto-download / auto-clear every N applied generations.
             Empty = off (default — keeps generating indefinitely without
             saving / clearing). Inlined rather than using
@@ -1221,7 +1449,11 @@ export function ControlPanel({
           onChange={(v) => s.set("boundsEnabled", v)}
         />
         <NumberInput
-          label="Width (px)"
+          label={
+            <>
+              Width&nbsp;<span className="gz-numinput__label-unit">px</span>
+            </>
+          }
           value={s.boundsWidth}
           min={1024}
           step={256}
@@ -1234,7 +1466,11 @@ export function ControlPanel({
           disabled={!s.boundsEnabled}
         />
         <NumberInput
-          label="Height (px)"
+          label={
+            <>
+              Height&nbsp;<span className="gz-numinput__label-unit">px</span>
+            </>
+          }
           value={s.boundsHeight}
           min={1024}
           step={256}
@@ -1248,6 +1484,14 @@ export function ControlPanel({
           onChange={(v) => s.set("vlmModel", v)}
           disabled={llmModelsStatus === "loaded" && llmModels.length === 0}
         />
+        {vlmSupportsThinking && (
+          <Dropdown<OllamaThinkingMode>
+            label="Vision effort"
+            value={s.vlmThinkingMode}
+            options={vlmThinkingOptions}
+            onChange={(v) => s.set("vlmThinkingMode", v)}
+          />
+        )}
         <Toggle
           label="Calibration cache (reuse saved model between sessions)"
           checked={s.calibCache}
@@ -1274,6 +1518,14 @@ export function ControlPanel({
         collapsible
         onReset={() => s.resetSection("view")}
       >
+        <Slider
+          label="Frame zoom"
+          value={s.frameZoom}
+          min={40}
+          max={100}
+          step={5}
+          onChange={(v) => s.set("frameZoom", v)}
+        />
         <Toggle
           label="Fit to frame"
           checked={s.compositeFitEnabled}
@@ -1358,12 +1610,14 @@ const DEFAULT_SECTION_EXPANDED: Record<string, boolean> = {
   prompting: true,
   "prompting.settings": false,
   workflow: true,
-  settings: true,
+  tracking: true,
+  settings: false,
   advanced: false,
   view: false,
 };
 
 const TOP_LEVEL_SECTION_KEYS = [
+  "tracking",
   "prompting",
   "workflow",
   "settings",
@@ -1601,6 +1855,7 @@ function Section({
   children,
   headerAction,
   onReset,
+  disabled = false,
 }: {
   title: string;
   /** Required when `collapsible` — keys the persisted expanded/collapsed state. */
@@ -1615,13 +1870,21 @@ function Section({
   headerAction?: React.ReactNode;
   /** Restore the fields owned by this section to fresh-install defaults. */
   onReset?: () => void;
+  /** Visually and interactively suspend a section body while preserving it. */
+  disabled?: boolean;
 }) {
   const sectionsExpanded = useStore((s) => s.sectionsExpanded);
   if (!collapsible || !sectionKey) {
     return (
       <section className="gz-section">
         <h3 className="gz-section__title">{title}</h3>
-        <div className="gz-section__body">{children}</div>
+        <fieldset
+          className={`gz-section__body${disabled ? " gz-section__body--disabled" : ""}`}
+          aria-disabled={disabled || undefined}
+          disabled={disabled}
+        >
+          {children}
+        </fieldset>
       </section>
     );
   }
@@ -1690,7 +1953,13 @@ function Section({
           {expanded ? "−" : "+"}
         </span>
       </button>
-      <div className="gz-section__body">{children}</div>
+      <fieldset
+        className={`gz-section__body${disabled ? " gz-section__body--disabled" : ""}`}
+        aria-disabled={disabled || undefined}
+        disabled={disabled}
+      >
+        {children}
+      </fieldset>
     </section>
   );
 }

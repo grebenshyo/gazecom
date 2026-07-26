@@ -392,13 +392,15 @@ body.gz-theme-dark .gz-prompt-slot__derived {
    matching underline; the body content stays neutral. */
 .gz-section--key-prompting { --gz-section-accent: #6f7f21; }
 .gz-section--key-workflow { --gz-section-accent: #bb4c8a; }
-.gz-section--key-settings { --gz-section-accent: #159f7c; }
+.gz-section--key-tracking { --gz-section-accent: #159f7c; }
+.gz-section--key-settings { --gz-section-accent: #16849a; }
 .gz-section--key-advanced { --gz-section-accent: #b87500; }
 .gz-section--key-view { --gz-section-accent: #5d7599; }
 
 body.gz-theme-dark .gz-section--key-prompting { --gz-section-accent: #cbd98a; }
 body.gz-theme-dark .gz-section--key-workflow { --gz-section-accent: #f0add0; }
-body.gz-theme-dark .gz-section--key-settings { --gz-section-accent: #8ddfc9; }
+body.gz-theme-dark .gz-section--key-tracking { --gz-section-accent: #8ddfc9; }
+body.gz-theme-dark .gz-section--key-settings { --gz-section-accent: #72d2df; }
 body.gz-theme-dark .gz-section--key-advanced { --gz-section-accent: #eeb86a; }
 body.gz-theme-dark .gz-section--key-view { --gz-section-accent: #bfd0e8; }
 
@@ -699,6 +701,18 @@ body.gz-theme-dark .gz-pool-warning {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  transition: opacity 0.15s, filter 0.15s;
+}
+
+.gz-section__body--disabled {
+  opacity: 0.32;
+  filter: grayscale(1);
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Inline group: a row of checkboxes + labels (legacy .control-inline-group). */
