@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use gazeCOM in research, software, or artistic work, please cite it using the metadata below."
+title: "gazeCOM"
+abstract: >-
+  gazeCOM is an open-source system for saliency-driven iterative image
+  generation and composition. Its central method grounds generation in a
+  discrete canvas coordinate system: coordinates derived from human input,
+  algorithmic movement, computer vision, or a vision-language model determine
+  both the image region passed to generation and the placement of each result
+  in a persistent composite. The VLM Guide extends this system with
+  model-selected placement, prompt decisions, and bounded visual memory.
+authors:
+  - name: "grebenshyo"
+version: "0.3.0"
+type: software
+license: MIT
+repository-code: "https://github.com/grebenshyo/gazecom"
+url: "https://grebenshyo.xyz/2026/07/22/gazecom/"
+keywords:
+  - artificial intelligence
+  - computer vision
+  - generative art
+  - human-computer interaction
+  - image composition
+  - saliency
+  - vision-language models
