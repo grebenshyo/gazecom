@@ -6,7 +6,7 @@ import { compositeStore } from "./canvas/CompositeStore";
 
 // Surface store + composite canvas on window for live console probing.
 // Diagnostic-only; safe to leave on for the lightweight footprint.
-(window as unknown as { gengaze: unknown }).gengaze = {
+(window as unknown as { gazecom: unknown }).gazecom = {
   useStore,
   compositeStore,
   state: () => useStore.getState(),

@@ -68,7 +68,7 @@ export const DEFAULT_LLM_ENHANCE_PROMPT =
   '"{prompt}"\n\n' +
   "Return only the rewritten prompt, no explanation.\n" +
   "Keep it concise.";
-export const DEFAULT_VLM_AGENT_HISTORY_LIMIT = 20;
+export const DEFAULT_VLM_GUIDE_HISTORY_LIMIT = 20;
 
 // VLM-mode point instruction. Mirrors the backend's POINT_SYSTEM_PROMPT
 // (routes/llm.py) — sent verbatim on every /api/llm/point request so the two
@@ -80,7 +80,7 @@ export const DEFAULT_VLM_POINT_PROMPT =
   "top-left corner and (1000,1000) is the bottom-right corner: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
 
-export const DEFAULT_VLM_AGENT_PROMPT =
+export const DEFAULT_VLM_COMPOSE_PROMPT =
   "You control the next step of an image composition. Inspect the complete " +
   "current canvas. Choose the center coordinate of the next {crop_size} x " +
   "{crop_size} generation crop and describe the concrete visual change to " +
@@ -129,7 +129,7 @@ export const DEFAULT_VLM_HYBRID_PROMPT =
   '"instruction": "<empty for pool; complete prompt for write>"}. ' +
   "No explanation, no other text.";
 
-export interface VLMAgentAction {
+export interface VLMComposeAction {
   x: number;
   y: number;
   instruction: string;
@@ -159,13 +159,13 @@ export interface VLMHybridSelectAction extends VLMSelectAction {
   hybridSource: "pool";
 }
 
-export interface VLMHybridWriteAction extends VLMAgentAction {
+export interface VLMHybridWriteAction extends VLMComposeAction {
   hybridSource: "write";
   promptId: 0;
 }
 
 export type VLMCanvasAction =
-  | VLMAgentAction
+  | VLMComposeAction
   | VLMGuideAction
   | VLMSelectAction
   | VLMHybridSelectAction
@@ -199,13 +199,13 @@ export interface AppState {
   /** Guide prompt strategy: rotate, select, compose, or combine both sources. */
   vlmGuidePromptChoice: VLMGuidePromptChoice;
   /** Pending Guide decision used by the next generation only. Transient. */
-  vlmAgentAction: VLMCanvasAction | null;
+  vlmGuideAction: VLMCanvasAction | null;
   /** Successfully applied Guide decisions for the current composition. */
-  vlmAgentHistory: VLMCanvasAction[];
+  vlmGuideHistory: VLMCanvasAction[];
   /** Maximum applied Guide decisions retained; zero disables continuity. */
-  vlmAgentHistoryLimit: number;
+  vlmGuideHistoryLimit: number;
   /** Whether bounded Guide mode has prepared its fixed workspace. Transient. */
-  vlmAgentWorkspaceReady: boolean;
+  vlmGuideWorkspaceReady: boolean;
   /**
    * Travel-speed multiplier for the synthetic roamers (roam / roam2).
    * 0.2 = the tuned default; the panel exposes a slider (roam modes only)
@@ -382,14 +382,14 @@ export interface AppState {
   vlmGuidePrompt: string;
   /** VLM Guide Select template, including the visible prompt-pool contract. */
   vlmSelectPrompt: string;
-  /** VLM Compose template. Legacy Agent storage is retained for compatibility. */
-  vlmAgentPrompt: string;
+  /** VLM Compose template. */
+  vlmComposePrompt: string;
   /** VLM Hybrid template, including the visible prompt-pool contract. */
   vlmHybridPrompt: string;
   /** User-resized VLM instruction textarea height in CSS pixels. */
   vlmPointPromptHeight: number;
   /** User-resized read-only Compose/Hybrid action height in CSS pixels. */
-  vlmAgentActionHeight: number;
+  vlmGuideActionHeight: number;
 
   // ── Last-pick feedback (transient — not persisted) ───────────────
   /**
@@ -477,22 +477,21 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.eventHistoryLength,
     StorageKeys.vlmBehavior,
     StorageKeys.vlmGuidePromptChoice,
-    StorageKeys.vlmAgentHistoryLimit,
+    StorageKeys.vlmGuideHistoryLimit,
     StorageKeys.vlmScope,
     StorageKeys.vlmPointPrompt,
     StorageKeys.vlmGuidePrompt,
     StorageKeys.vlmSelectPrompt,
-    StorageKeys.vlmAgentPrompt,
+    StorageKeys.vlmComposePrompt,
     StorageKeys.vlmHybridPrompt,
     StorageKeys.vlmPointPromptHeight,
-    StorageKeys.vlmAgentActionHeight,
+    StorageKeys.vlmGuideActionHeight,
   ],
   settings: [
     StorageKeys.heatmapStyle,
     StorageKeys.selectedImage,
     StorageKeys.compositeMatteEnabled,
     StorageKeys.heatmapMatteEnabled,
-    StorageKeys.matteEnabled,
     StorageKeys.matteColor,
     StorageKeys.feedbackMode,
     StorageKeys.comMode,
@@ -546,20 +545,14 @@ function loadInitial(): AppState {
     StorageKeys.vlmGuidePromptChoice,
     "rotate",
   );
-  const legacyAgent = storedVlmBehavior === "agent";
   const vlmBehavior: VLMBehavior =
-    storedVlmBehavior === "guide" || legacyAgent ? "guide" : "point";
-  const vlmGuidePromptChoice: VLMGuidePromptChoice = legacyAgent
-    ? "compose"
-    : storedGuidePromptChoice === "select" ||
-        storedGuidePromptChoice === "compose" ||
-        storedGuidePromptChoice === "hybrid"
+    storedVlmBehavior === "guide" ? "guide" : "point";
+  const vlmGuidePromptChoice: VLMGuidePromptChoice =
+    storedGuidePromptChoice === "select" ||
+    storedGuidePromptChoice === "compose" ||
+    storedGuidePromptChoice === "hybrid"
       ? storedGuidePromptChoice
       : "rotate";
-  if (legacyAgent) {
-    writeJSON(StorageKeys.vlmBehavior, "guide");
-    writeJSON(StorageKeys.vlmGuidePromptChoice, "compose");
-  }
   return {
     trackingMode,
     trackingProfiles,
@@ -568,10 +561,10 @@ function loadInitial(): AppState {
     vlmPoint: null,
     vlmBehavior,
     vlmGuidePromptChoice,
-    vlmAgentAction: null,
-    vlmAgentHistory: [],
-    vlmAgentHistoryLimit: loadVlmAgentHistoryLimit(),
-    vlmAgentWorkspaceReady: false,
+    vlmGuideAction: null,
+    vlmGuideHistory: [],
+    vlmGuideHistoryLimit: loadVlmGuideHistoryLimit(),
+    vlmGuideWorkspaceReady: false,
     roamSpeed: trackingProfile.roamSpeed,
     trailLength: trackingProfile.trailLength,
     eventHistoryLength: readJSON<number>(
@@ -600,11 +593,11 @@ function loadInitial(): AppState {
     autoClearEvery: readJSON<number | null>(StorageKeys.autoClearEvery, null),
     compositeMatteEnabled: readJSON<boolean>(
       StorageKeys.compositeMatteEnabled,
-      readJSON<boolean>(StorageKeys.matteEnabled, false),
+      false,
     ),
     heatmapMatteEnabled: readJSON<boolean>(
       StorageKeys.heatmapMatteEnabled,
-      readJSON<boolean>(StorageKeys.matteEnabled, false),
+      false,
     ),
     matteColor: normalizeHexColor(
       readJSON<string>(StorageKeys.matteColor, "#808080"),
@@ -629,12 +622,7 @@ function loadInitial(): AppState {
     firstPatchPosition: null,
 
     promptList: readJSON<string>(StorageKeys.promptList, "Secession Trees Art"),
-    // Fresh installs get a single base slot with unit weight. Reads any
-    // legacy persisted value via
-    // readJSON; if the shape is the old Record<string, number> it'll
-    // deserialize as an array-ish object that fails the array check
-    // and we fall back to the default. Single-user project, no
-    // explicit migration plumbing.
+    // Invalid persisted values fall back to one base slot with unit weight.
     pinnedPrompts: ((): PromptSlots => {
       const raw = readJSON<unknown>(StorageKeys.pinnedPrompts, null);
       if (Array.isArray(raw) && raw.length > 0) {
@@ -665,9 +653,9 @@ function loadInitial(): AppState {
       StorageKeys.vlmSelectPrompt,
       DEFAULT_VLM_SELECT_PROMPT,
     ),
-    vlmAgentPrompt: readJSON<string>(
-      StorageKeys.vlmAgentPrompt,
-      DEFAULT_VLM_AGENT_PROMPT,
+    vlmComposePrompt: readJSON<string>(
+      StorageKeys.vlmComposePrompt,
+      DEFAULT_VLM_COMPOSE_PROMPT,
     ),
     vlmHybridPrompt: readJSON<string>(
       StorageKeys.vlmHybridPrompt,
@@ -677,8 +665,8 @@ function loadInitial(): AppState {
       StorageKeys.vlmPointPromptHeight,
       60,
     ),
-    vlmAgentActionHeight: readJSON<number>(
-      StorageKeys.vlmAgentActionHeight,
+    vlmGuideActionHeight: readJSON<number>(
+      StorageKeys.vlmGuideActionHeight,
       60,
     ),
 
@@ -716,7 +704,6 @@ function loadInitial(): AppState {
 
 function loadOllamaThinkingMode(key: StorageKey): OllamaThinkingMode {
   const stored = readJSON<unknown>(key, "off");
-  // Preserve the short-lived pre-release values from the first implementation.
   if (
     stored === "low" ||
     stored === "medium" ||
@@ -726,14 +713,13 @@ function loadOllamaThinkingMode(key: StorageKey): OllamaThinkingMode {
   ) {
     return stored;
   }
-  if (stored === "thinking") return "low";
   return "off";
 }
 
-function loadVlmAgentHistoryLimit(): number {
+function loadVlmGuideHistoryLimit(): number {
   const stored = readJSON<unknown>(
-    StorageKeys.vlmAgentHistoryLimit,
-    DEFAULT_VLM_AGENT_HISTORY_LIMIT,
+    StorageKeys.vlmGuideHistoryLimit,
+    DEFAULT_VLM_GUIDE_HISTORY_LIMIT,
   );
   if (
     typeof stored !== "number" ||
@@ -741,7 +727,7 @@ function loadVlmAgentHistoryLimit(): number {
     stored < 0 ||
     stored > 100
   ) {
-    return DEFAULT_VLM_AGENT_HISTORY_LIMIT;
+    return DEFAULT_VLM_GUIDE_HISTORY_LIMIT;
   }
   return stored;
 }
@@ -838,16 +824,16 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmThinkingMode", StorageKeys.vlmThinkingMode],
   ["vlmBehavior", StorageKeys.vlmBehavior],
   ["vlmGuidePromptChoice", StorageKeys.vlmGuidePromptChoice],
-  ["vlmAgentHistoryLimit", StorageKeys.vlmAgentHistoryLimit],
+  ["vlmGuideHistoryLimit", StorageKeys.vlmGuideHistoryLimit],
   ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
   ["vlmGuidePrompt", StorageKeys.vlmGuidePrompt],
   ["vlmSelectPrompt", StorageKeys.vlmSelectPrompt],
-  ["vlmAgentPrompt", StorageKeys.vlmAgentPrompt],
+  ["vlmComposePrompt", StorageKeys.vlmComposePrompt],
   ["vlmHybridPrompt", StorageKeys.vlmHybridPrompt],
   ["vlmPointPromptHeight", StorageKeys.vlmPointPromptHeight],
-  ["vlmAgentActionHeight", StorageKeys.vlmAgentActionHeight],
+  ["vlmGuideActionHeight", StorageKeys.vlmGuideActionHeight],
   ["theme", StorageKeys.theme],
   ["panelMinimized", StorageKeys.panelMinimized],
   ["panelPosition", StorageKeys.panelPosition],
@@ -876,9 +862,9 @@ export const useStore = create<AppState & AppActions>()(
           trackingMode: mode,
           ...state.trackingProfiles[mode],
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
-          vlmAgentWorkspaceReady: false,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
         }));
         return;
       }
@@ -886,7 +872,7 @@ export const useStore = create<AppState & AppActions>()(
         set({
           trackingActive: value as boolean,
           vlmPoint: null,
-          vlmAgentAction: null,
+          vlmGuideAction: null,
         });
         return;
       }
@@ -894,9 +880,9 @@ export const useStore = create<AppState & AppActions>()(
         set({
           vlmBehavior: value as VLMBehavior,
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
-          vlmAgentWorkspaceReady: false,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
         });
         return;
       }
@@ -904,21 +890,21 @@ export const useStore = create<AppState & AppActions>()(
         set({
           vlmGuidePromptChoice: value as VLMGuidePromptChoice,
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
-          vlmAgentWorkspaceReady: false,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
         });
         return;
       }
-      if (key === "vlmAgentHistoryLimit") {
+      if (key === "vlmGuideHistoryLimit") {
         set({
-          vlmAgentHistoryLimit: Math.min(
+          vlmGuideHistoryLimit: Math.min(
             100,
             Math.max(0, Math.floor(value as number)),
           ),
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
         });
         return;
       }
@@ -930,7 +916,7 @@ export const useStore = create<AppState & AppActions>()(
         key === "vlmModel" ||
         key === "vlmGuidePrompt" ||
         key === "vlmSelectPrompt" ||
-        key === "vlmAgentPrompt" ||
+        key === "vlmComposePrompt" ||
         key === "vlmHybridPrompt" ||
         key === "selectedImage" ||
         key === "boundsEnabled" ||
@@ -940,9 +926,9 @@ export const useStore = create<AppState & AppActions>()(
         set({
           [key]: value,
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
-          vlmAgentWorkspaceReady: false,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
         } as Partial<AppState>);
         return;
       }
@@ -973,9 +959,9 @@ export const useStore = create<AppState & AppActions>()(
         isComposited: false,
         generationInProgress: false,
         vlmPoint: null,
-        vlmAgentAction: null,
-        vlmAgentHistory: [],
-        vlmAgentWorkspaceReady: false,
+        vlmGuideAction: null,
+        vlmGuideHistory: [],
+        vlmGuideWorkspaceReady: false,
       })),
     resetSection: (section) => {
       for (const key of SECTION_STORAGE_KEYS[section]) clearKey(key);
@@ -1016,20 +1002,20 @@ export const useStore = create<AppState & AppActions>()(
               eventHistoryLength: defaults.eventHistoryLength,
               vlmBehavior: defaults.vlmBehavior,
               vlmGuidePromptChoice: defaults.vlmGuidePromptChoice,
-              vlmAgentHistoryLimit: defaults.vlmAgentHistoryLimit,
+              vlmGuideHistoryLimit: defaults.vlmGuideHistoryLimit,
               vlmScope: defaults.vlmScope,
               vlmPointPrompt: defaults.vlmPointPrompt,
               vlmGuidePrompt: defaults.vlmGuidePrompt,
               vlmSelectPrompt: defaults.vlmSelectPrompt,
-              vlmAgentPrompt: defaults.vlmAgentPrompt,
+              vlmComposePrompt: defaults.vlmComposePrompt,
               vlmHybridPrompt: defaults.vlmHybridPrompt,
               vlmPointPromptHeight: defaults.vlmPointPromptHeight,
-              vlmAgentActionHeight: defaults.vlmAgentActionHeight,
+              vlmGuideActionHeight: defaults.vlmGuideActionHeight,
               trackingActive: false,
               vlmPoint: null,
-              vlmAgentAction: null,
-              vlmAgentHistory: [],
-              vlmAgentWorkspaceReady: false,
+              vlmGuideAction: null,
+              vlmGuideHistory: [],
+              vlmGuideWorkspaceReady: false,
             };
           });
           break;
@@ -1069,9 +1055,9 @@ export const useStore = create<AppState & AppActions>()(
             vlmThinkingMode: defaults.vlmThinkingMode,
             calibCache: defaults.calibCache,
             vlmPoint: null,
-            vlmAgentAction: null,
-            vlmAgentHistory: [],
-            vlmAgentWorkspaceReady: false,
+            vlmGuideAction: null,
+            vlmGuideHistory: [],
+            vlmGuideWorkspaceReady: false,
           });
           break;
         case "view":

@@ -32,7 +32,6 @@ build = [
 
 [project.scripts]
 gazecom-backend = "gengaze.main:run"
-gengaze-backend = "gengaze.main:run"
 
 [build-system]
 requires = ["setuptools>=68"]

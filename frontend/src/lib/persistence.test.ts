@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   StorageKeys,
   applySettingsFile,
-  clearAllGenGazeKeys,
+  clearAllGazeComKeys,
   clearKey,
   createSettingsFile,
   readJSON,
@@ -37,18 +37,18 @@ describe("readJSON / writeJSON", () => {
   });
 });
 
-describe("clearKey / clearAllGenGazeKeys", () => {
+describe("clearKey / clearAllGazeComKeys", () => {
   it("clearKey removes a single key", () => {
     writeJSON(StorageKeys.steps, 7);
     clearKey(StorageKeys.steps);
     expect(localStorage.getItem(StorageKeys.steps)).toBeNull();
   });
 
-  it("clearAllGenGazeKeys wipes only gengaze.* keys", () => {
+  it("clearAllGazeComKeys wipes only gazecom.* keys", () => {
     writeJSON(StorageKeys.steps, 7);
     writeJSON(StorageKeys.theme, "dark");
     localStorage.setItem("other-app-key", "keep-me");
-    clearAllGenGazeKeys();
+    clearAllGazeComKeys();
     expect(localStorage.getItem(StorageKeys.steps)).toBeNull();
     expect(localStorage.getItem(StorageKeys.theme)).toBeNull();
     expect(localStorage.getItem("other-app-key")).toBe("keep-me");
@@ -56,33 +56,32 @@ describe("clearKey / clearAllGenGazeKeys", () => {
 });
 
 describe("settings files", () => {
-  it("exports current settings without legacy keys", () => {
+  it("exports current settings", () => {
     writeJSON(StorageKeys.steps, 42);
     writeJSON(StorageKeys.vlmModel, "gemma4:latest");
     writeJSON(StorageKeys.llmThinkingMode, "off");
     writeJSON(StorageKeys.vlmThinkingMode, "low");
     writeJSON(StorageKeys.vlmBehavior, "guide");
     writeJSON(StorageKeys.vlmGuidePromptChoice, "hybrid");
-    writeJSON(StorageKeys.vlmAgentHistoryLimit, 12);
+    writeJSON(StorageKeys.vlmGuideHistoryLimit, 12);
     writeJSON(StorageKeys.vlmScope, "canvas");
     writeJSON(StorageKeys.vlmGuidePrompt, "Choose the next location.");
     writeJSON(StorageKeys.vlmSelectPrompt, "Choose from {prompt_pool}.");
-    writeJSON(StorageKeys.vlmAgentPrompt, "Choose the next edit.");
+    writeJSON(StorageKeys.vlmComposePrompt, "Choose the next edit.");
     writeJSON(
       StorageKeys.vlmHybridPrompt,
       "Choose or write from {prompt_pool}.",
     );
     writeJSON(StorageKeys.vlmPointPromptHeight, 180);
-    writeJSON(StorageKeys.vlmAgentActionHeight, 96);
+    writeJSON(StorageKeys.vlmGuideActionHeight, 96);
     writeJSON(StorageKeys.autoCollapsePanels, true);
     writeJSON(StorageKeys.mutedWorkflows, ["edit/example.json"]);
-    writeJSON(StorageKeys.roamSpeed, 9);
 
     const file = createSettingsFile();
 
     expect(file).toMatchObject({
       format: "gazeCOM-settings",
-      schema: 1,
+      schema: 2,
       settings: {
         steps: 42,
         vlmModel: "gemma4:latest",
@@ -90,19 +89,18 @@ describe("settings files", () => {
         vlmThinkingMode: "low",
         vlmBehavior: "guide",
         vlmGuidePromptChoice: "hybrid",
-        vlmAgentHistoryLimit: 12,
+        vlmGuideHistoryLimit: 12,
         vlmScope: "canvas",
         vlmGuidePrompt: "Choose the next location.",
         vlmSelectPrompt: "Choose from {prompt_pool}.",
-        vlmAgentPrompt: "Choose the next edit.",
+        vlmComposePrompt: "Choose the next edit.",
         vlmHybridPrompt: "Choose or write from {prompt_pool}.",
         vlmPointPromptHeight: 180,
-        vlmAgentActionHeight: 96,
+        vlmGuideActionHeight: 96,
         autoCollapsePanels: true,
         mutedWorkflows: ["edit/example.json"],
       },
     });
-    expect(file.settings).not.toHaveProperty("roamSpeed");
   });
 
   it("imports recognized settings, ignores unknown fields, and replaces old values", () => {
@@ -112,7 +110,7 @@ describe("settings files", () => {
 
     const count = applySettingsFile({
       format: "gazeCOM-settings",
-      schema: 1,
+      schema: 2,
       exportedAt: "2026-07-21T00:00:00.000Z",
       settings: { steps: 12, futureSetting: "ignored" },
     });
@@ -126,7 +124,7 @@ describe("settings files", () => {
   it("accepts a blank workflow step setting", () => {
     const count = applySettingsFile({
       format: "gazeCOM-settings",
-      schema: 1,
+      schema: 2,
       settings: { steps: null },
     });
 
@@ -140,7 +138,7 @@ describe("settings files", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
+        schema: 2,
         settings: { steps: "many" },
       }),
     ).toThrow('Invalid value for setting "steps".');
@@ -151,8 +149,8 @@ describe("settings files", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
-        settings: { vlmBehavior: "automatic" },
+        schema: 2,
+        settings: { vlmBehavior: "agent" },
       }),
     ).toThrow('Invalid value for setting "vlmBehavior".');
   });
@@ -161,27 +159,27 @@ describe("settings files", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
+        schema: 2,
         settings: { vlmGuidePromptChoice: "weighted-select" },
       }),
     ).toThrow('Invalid value for setting "vlmGuidePromptChoice".');
   });
 
-  it("rejects an invalid Agent history limit", () => {
+  it("rejects an invalid Guide history limit", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
-        settings: { vlmAgentHistoryLimit: -1 },
+        schema: 2,
+        settings: { vlmGuideHistoryLimit: -1 },
       }),
-    ).toThrow('Invalid value for setting "vlmAgentHistoryLimit".');
+    ).toThrow('Invalid value for setting "vlmGuideHistoryLimit".');
   });
 
   it("rejects an invalid Ollama thinking mode", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
+        schema: 2,
         settings: { vlmThinkingMode: "automatic" },
       }),
     ).toThrow('Invalid value for setting "vlmThinkingMode".');
@@ -191,7 +189,7 @@ describe("settings files", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 1,
+        schema: 2,
         settings: { mutedWorkflows: ["img/valid.json", 42] },
       }),
     ).toThrow('Invalid value for setting "mutedWorkflows".');
@@ -204,9 +202,9 @@ describe("settings files", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",
-        schema: 2,
+        schema: 1,
         settings: {},
       }),
-    ).toThrow("Unsupported settings schema: 2.");
+    ).toThrow("Unsupported settings schema: 1.");
   });
 });

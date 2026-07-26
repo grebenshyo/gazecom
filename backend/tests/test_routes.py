@@ -64,7 +64,8 @@ def test_generate_accepts_empty_prompt(
     )
     captured: dict = {}
 
-    async def fake_upload_image(_client, _data: bytes, _name: str) -> str:
+    async def fake_upload_image(_client, _data: bytes, name: str) -> str:
+        captured["upload_name"] = name
         return "uploaded.png"
 
     async def fake_run_for_image(_client, workflow: dict, _timeout: float) -> bytes:
@@ -86,6 +87,7 @@ def test_generate_accepts_empty_prompt(
         files={"image": ("input.png", b"input", "image/png")},
     )
     assert resp.status_code == 200
+    assert captured["upload_name"] == "gazecom_input.png"
     assert captured["workflow"]["2"]["inputs"]["text"] == ""
 
 

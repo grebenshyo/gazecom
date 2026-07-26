@@ -446,7 +446,21 @@ def test_llm_compose_decision_uses_structured_output(
     assert sent["options"]["temperature"] == 0.1
 
 
-def test_llm_agent_decision_accepts_normalized_coordinates(
+def test_llm_decision_rejects_removed_agent_alias(client: TestClient) -> None:
+    resp = client.post(
+        "/api/llm/decision",
+        data={
+            "model": "gemma3:latest",
+            "prompt": "Choose an edit.",
+            "behavior": "agent",
+        },
+        files={"image": ("canvas.png", b"image", "image/png")},
+    )
+
+    assert resp.status_code == 422
+
+
+def test_llm_compose_decision_accepts_normalized_coordinates(
     client: TestClient,
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -470,7 +484,7 @@ def test_llm_agent_decision_accepts_normalized_coordinates(
     }
 
 
-def test_llm_agent_decision_accepts_qwen_json_in_thinking_field(
+def test_llm_compose_decision_accepts_qwen_json_in_thinking_field(
     client: TestClient,
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -506,7 +520,7 @@ def test_llm_agent_decision_accepts_qwen_json_in_thinking_field(
     }
 
 
-def test_llm_agent_decision_resends_applied_action_history(
+def test_llm_compose_decision_resends_applied_action_history(
     client: TestClient,
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -565,7 +579,7 @@ def test_llm_agent_decision_resends_applied_action_history(
     ]
 
 
-def test_llm_agent_decision_rejects_invalid_output(
+def test_llm_compose_decision_rejects_invalid_output(
     client: TestClient,
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -587,7 +601,7 @@ def test_llm_agent_decision_rejects_invalid_output(
     )
 
     assert resp.status_code == 422
-    assert "invalid agent decision" in resp.text
+    assert "invalid compose decision" in resp.text
 
 
 def test_llm_guide_decision_uses_coordinate_only_schema(

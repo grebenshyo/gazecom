@@ -108,7 +108,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     if (sessionStorage.getItem("gazecom.e2e.initialized")) return;
     for (const key of Object.keys(localStorage)) {
-      if (key.startsWith("gengaze.")) localStorage.removeItem(key);
+      if (key.startsWith("gazecom.")) localStorage.removeItem(key);
     }
     sessionStorage.setItem("gazecom.e2e.initialized", "true");
   });
@@ -231,7 +231,7 @@ test("VLM prompt height survives collapsing the command palette", async ({
   );
   await expect
     .poll(() =>
-      page.evaluate(() => localStorage.getItem("gengaze.vlmPointPromptHeight")),
+      page.evaluate(() => localStorage.getItem("gazecom.vlmPointPromptHeight")),
     )
     .toBe("180");
 });

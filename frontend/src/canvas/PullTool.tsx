@@ -117,9 +117,9 @@ export function PullTool({ pz }: PullToolProps) {
     );
     if (!blob) return;
     const url = URL.createObjectURL(blob);
-    // A manual Pull changes the image the next Agent decision must inspect.
-    // Agent-driven Pulls immediately replace this with their fresh action.
-    set("vlmAgentAction", null);
+    // A manual Pull changes the image the next Guide decision must inspect.
+    // Guide-driven Pulls immediately replace this with their fresh action.
+    set("vlmGuideAction", null);
     set("baseImageURL", url);
     set("baseImgPosition", {
       x: Math.round(pullPos.x),

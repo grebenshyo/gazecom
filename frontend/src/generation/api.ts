@@ -278,15 +278,7 @@ export async function setOllamaHost(host: string): Promise<AppConfig> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ollama_host: host }),
   });
-  if (!resp.ok) {
-    const err = await httpError(resp, "Config save failed");
-    if (resp.status === 422 && err.message.includes("comfy_host")) {
-      throw new Error(
-        "Backend is still running the old config route. Restart gazeCOM/the backend, then save the Ollama host again.",
-      );
-    }
-    throw err;
-  }
+  if (!resp.ok) throw await httpError(resp, "Config save failed");
   return resp.json() as Promise<AppConfig>;
 }
 

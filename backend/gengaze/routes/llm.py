@@ -83,7 +83,7 @@ class LLMPointOut(BaseModel):
     y: float
 
 
-class VLMAgentDecision(BaseModel):
+class VLMComposeDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     x: float = Field(ge=0, le=1000)
@@ -91,14 +91,14 @@ class VLMAgentDecision(BaseModel):
     instruction: str = Field(min_length=1)
 
 
-class VLMAgentDecisionOut(BaseModel):
+class VLMComposeDecisionOut(BaseModel):
     # Coordinates are normalized to [0, 1] over the submitted canvas.
     x: float
     y: float
     instruction: str
 
 
-class VLMAgentHistoryItem(BaseModel):
+class VLMComposeHistoryItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     x: float = Field(ge=0, le=1)
@@ -106,7 +106,7 @@ class VLMAgentHistoryItem(BaseModel):
     instruction: str = Field(min_length=1)
 
 
-_AGENT_HISTORY_ADAPTER = TypeAdapter(list[VLMAgentHistoryItem])
+_COMPOSE_HISTORY_ADAPTER = TypeAdapter(list[VLMComposeHistoryItem])
 
 
 class VLMGuideDecision(BaseModel):
@@ -340,9 +340,9 @@ def _validate_point(
     return point, None
 
 
-def _validate_agent_decision(
+def _validate_compose_decision(
     body: Any,
-) -> tuple[VLMAgentDecisionOut | None, str | None]:
+) -> tuple[VLMComposeDecisionOut | None, str | None]:
     if not isinstance(body, dict):
         return None, "unexpected non-object response"
     text = _strip_model_output(_extract_ollama_text(body))
@@ -352,17 +352,17 @@ def _validate_agent_decision(
         # entire field validates as the strict decision object below.
         text = _strip_model_output(_extract_ollama_thinking(body))
     if not text:
-        return None, f"empty agent decision ({_body_summary(body)})"
+        return None, f"empty compose decision ({_body_summary(body)})"
     try:
-        decision = VLMAgentDecision.model_validate_json(text)
+        decision = VLMComposeDecision.model_validate_json(text)
     except ValidationError as e:
-        return None, f"invalid agent decision ({_short_detail(str(e))})"
+        return None, f"invalid compose decision ({_short_detail(str(e))})"
 
     instruction = decision.instruction.strip()
     if not instruction:
-        return None, "empty agent instruction"
+        return None, "empty compose instruction"
     x, y = _normalize_coord(decision.x, decision.y)
-    return VLMAgentDecisionOut(x=x, y=y, instruction=instruction), None
+    return VLMComposeDecisionOut(x=x, y=y, instruction=instruction), None
 
 
 def _validate_guide_decision(
@@ -470,13 +470,13 @@ def _ollama_attempts(
     ]
 
 
-def _parse_agent_history(raw: str) -> list[VLMAgentHistoryItem]:
+def _parse_compose_history(raw: str) -> list[VLMComposeHistoryItem]:
     try:
-        return _AGENT_HISTORY_ADAPTER.validate_json(raw)
+        return _COMPOSE_HISTORY_ADAPTER.validate_json(raw)
     except ValidationError as e:
         raise HTTPException(
             400,
-            f"Agent history is invalid: {_short_detail(str(e))}",
+            f"Compose history is invalid: {_short_detail(str(e))}",
         ) from e
 
 
@@ -530,14 +530,14 @@ def _parse_prompt_ids(raw: str, *, allow_empty: bool = False) -> list[int]:
 def _decision_chat_messages(
     instruction: str,
     history: (
-        list[VLMAgentHistoryItem]
+        list[VLMComposeHistoryItem]
         | list[VLMGuideHistoryItem]
         | list[VLMSelectHistoryItem]
         | list[VLMHybridHistoryItem]
     ),
     image_b64: str,
     *,
-    behavior: Literal["agent", "compose", "guide", "select", "hybrid"],
+    behavior: Literal["compose", "guide", "select", "hybrid"],
 ) -> list[dict[str, Any]]:
     if not history:
         return [
@@ -556,7 +556,7 @@ def _decision_chat_messages(
             "x": round(action.x * 1000, 3),
             "y": round(action.y * 1000, 3),
         }
-        if behavior in {"agent", "compose"} and isinstance(action, VLMAgentHistoryItem):
+        if behavior == "compose" and isinstance(action, VLMComposeHistoryItem):
             action_payload["instruction"] = action.instruction.strip()
         elif behavior == "select" and isinstance(action, VLMSelectHistoryItem):
             action_payload["prompt_id"] = action.prompt_id
@@ -884,11 +884,11 @@ async def decision(
     model: str = Form(min_length=1),
     prompt: str = Form(min_length=1),
     history: str = Form(default="[]"),
-    behavior: Literal["agent", "compose", "guide", "select", "hybrid"] = Form(default="agent"),
+    behavior: Literal["compose", "guide", "select", "hybrid"] = Form(default="compose"),
     prompt_ids: str = Form(default="[]"),
     think: OllamaThink | None = Form(default=None),
     settings: Settings = Depends(get_settings),
-) -> VLMAgentDecisionOut | VLMGuideDecisionOut | VLMSelectDecisionOut | VLMHybridDecisionOut:
+) -> VLMComposeDecisionOut | VLMGuideDecisionOut | VLMSelectDecisionOut | VLMHybridDecisionOut:
     instruction = prompt.strip()
     if not instruction:
         raise HTTPException(400, f"{behavior.title()} prompt is empty.")
@@ -899,7 +899,7 @@ async def decision(
     image_b64 = b64encode(image_bytes).decode("ascii")
     model_name = model.strip()
     parsed_history: (
-        list[VLMAgentHistoryItem]
+        list[VLMComposeHistoryItem]
         | list[VLMGuideHistoryItem]
         | list[VLMSelectHistoryItem]
         | list[VLMHybridHistoryItem]
@@ -907,7 +907,7 @@ async def decision(
     validate_decision: Callable[
         [Any],
         tuple[
-            VLMAgentDecisionOut
+            VLMComposeDecisionOut
             | VLMGuideDecisionOut
             | VLMSelectDecisionOut
             | VLMHybridDecisionOut
@@ -915,10 +915,10 @@ async def decision(
             str | None,
         ],
     ]
-    if behavior in {"agent", "compose"}:
-        parsed_history = _parse_agent_history(history)
-        output_schema = VLMAgentDecision.model_json_schema()
-        validate_decision = _validate_agent_decision
+    if behavior == "compose":
+        parsed_history = _parse_compose_history(history)
+        output_schema = VLMComposeDecision.model_json_schema()
+        validate_decision = _validate_compose_decision
     elif behavior == "guide":
         parsed_history = _parse_guide_history(history)
         output_schema = VLMGuideDecision.model_json_schema()

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useStore, type UIScale } from "../store";
 import {
   applySettingsFile,
-  clearAllGenGazeKeys,
+  clearAllGazeComKeys,
   createSettingsFile,
 } from "../lib/persistence";
 import {
@@ -739,7 +739,7 @@ function SettingsPanel({
                 return;
               try {
                 await resetConfig();
-                clearAllGenGazeKeys();
+                clearAllGazeComKeys();
                 window.location.reload();
               } catch (err) {
                 window.alert(`Reset failed: ${(err as Error).message}`);

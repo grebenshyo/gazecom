@@ -30,20 +30,20 @@ describe("useStore — actions", () => {
   it("clears transient canvas decisions when VLM behavior changes", async () => {
     const { useStore } = await import("./index");
     useStore.getState().patch({
-      vlmAgentAction: { x: 0.7, y: 0.2 },
-      vlmAgentHistory: [
+      vlmGuideAction: { x: 0.7, y: 0.2 },
+      vlmGuideHistory: [
         { x: 0.5, y: 0.5 },
       ],
-      vlmAgentWorkspaceReady: true,
+      vlmGuideWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmBehavior", "guide");
 
     expect(useStore.getState()).toMatchObject({
       vlmBehavior: "guide",
-      vlmAgentAction: null,
-      vlmAgentHistory: [],
-      vlmAgentWorkspaceReady: false,
+      vlmGuideAction: null,
+      vlmGuideHistory: [],
+      vlmGuideWorkspaceReady: false,
     });
   });
 
@@ -51,50 +51,50 @@ describe("useStore — actions", () => {
     const { useStore } = await import("./index");
     useStore.getState().patch({
       vlmBehavior: "guide",
-      vlmAgentAction: { x: 0.4, y: 0.6 },
-      vlmAgentHistory: [{ x: 0.2, y: 0.8 }],
-      vlmAgentWorkspaceReady: true,
+      vlmGuideAction: { x: 0.4, y: 0.6 },
+      vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
+      vlmGuideWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmGuidePromptChoice", "select");
 
     expect(useStore.getState()).toMatchObject({
       vlmGuidePromptChoice: "select",
-      vlmAgentAction: null,
-      vlmAgentHistory: [],
-      vlmAgentWorkspaceReady: false,
+      vlmGuideAction: null,
+      vlmGuideHistory: [],
+      vlmGuideWorkspaceReady: false,
     });
   });
 
-  it("keeps Agent history when tracking pauses, but drops the pending action", async () => {
+  it("keeps Guide history when tracking pauses, but drops the pending action", async () => {
     const { useStore } = await import("./index");
     const history = [{ x: 0.5, y: 0.5 }];
     useStore.getState().patch({
       trackingActive: true,
-      vlmAgentAction: { x: 0.7, y: 0.2 },
-      vlmAgentHistory: history,
+      vlmGuideAction: { x: 0.7, y: 0.2 },
+      vlmGuideHistory: history,
     });
 
     useStore.getState().set("trackingActive", false);
 
-    expect(useStore.getState().vlmAgentAction).toBeNull();
-    expect(useStore.getState().vlmAgentHistory).toEqual(history);
+    expect(useStore.getState().vlmGuideAction).toBeNull();
+    expect(useStore.getState().vlmGuideHistory).toEqual(history);
   });
 
-  it("clears Agent history when its retained-action limit changes", async () => {
+  it("clears Guide history when its retained-action limit changes", async () => {
     const { useStore } = await import("./index");
     useStore.getState().patch({
-      vlmAgentAction: { x: 0.2, y: 0.8 },
-      vlmAgentHistory: [
+      vlmGuideAction: { x: 0.2, y: 0.8 },
+      vlmGuideHistory: [
         { x: 0.5, y: 0.5 },
       ],
     });
 
-    useStore.getState().set("vlmAgentHistoryLimit", 0);
+    useStore.getState().set("vlmGuideHistoryLimit", 0);
 
-    expect(useStore.getState().vlmAgentHistoryLimit).toBe(0);
-    expect(useStore.getState().vlmAgentAction).toBeNull();
-    expect(useStore.getState().vlmAgentHistory).toEqual([]);
+    expect(useStore.getState().vlmGuideHistoryLimit).toBe(0);
+    expect(useStore.getState().vlmGuideAction).toBeNull();
+    expect(useStore.getState().vlmGuideHistory).toEqual([]);
   });
 
   it("patch() updates multiple fields atomically", async () => {
@@ -142,7 +142,7 @@ describe("useStore — actions", () => {
 
   it("resetSection() keeps global interface settings outside View reset", async () => {
     const {
-      DEFAULT_VLM_AGENT_PROMPT,
+      DEFAULT_VLM_COMPOSE_PROMPT,
       DEFAULT_VLM_GUIDE_PROMPT,
       DEFAULT_VLM_HYBRID_PROMPT,
       DEFAULT_VLM_POINT_PROMPT,
@@ -162,10 +162,10 @@ describe("useStore — actions", () => {
       vlmPointPrompt: "custom point prompt",
       vlmGuidePrompt: "custom guide prompt",
       vlmSelectPrompt: "custom select prompt",
-      vlmAgentPrompt: "custom agent prompt",
+      vlmComposePrompt: "custom compose prompt",
       vlmHybridPrompt: "custom hybrid prompt",
       vlmPointPromptHeight: 180,
-      vlmAgentActionHeight: 140,
+      vlmGuideActionHeight: 140,
       compositeMatteEnabled: true,
       heatmapMatteEnabled: true,
       matteColor: "#123abc",
@@ -187,10 +187,10 @@ describe("useStore — actions", () => {
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
       vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
       vlmSelectPrompt: DEFAULT_VLM_SELECT_PROMPT,
-      vlmAgentPrompt: DEFAULT_VLM_AGENT_PROMPT,
+      vlmComposePrompt: DEFAULT_VLM_COMPOSE_PROMPT,
       vlmHybridPrompt: DEFAULT_VLM_HYBRID_PROMPT,
       vlmPointPromptHeight: 60,
-      vlmAgentActionHeight: 60,
+      vlmGuideActionHeight: 60,
       compositeMatteEnabled: false,
       heatmapMatteEnabled: false,
       matteColor: "#808080",
@@ -267,7 +267,7 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmModel).toBe("");
     expect(useStore.getState().llmThinkingMode).toBe("off");
     expect(useStore.getState().vlmThinkingMode).toBe("off");
-    expect(useStore.getState().vlmAgentHistoryLimit).toBe(20);
+    expect(useStore.getState().vlmGuideHistoryLimit).toBe(20);
   });
 
   it("uses the tuned Roam profile on a fresh install", async () => {
@@ -392,23 +392,23 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.steps, "30");
     localStorage.setItem(StorageKeys.eventHistoryLength, "900");
     localStorage.setItem(StorageKeys.vlmModel, '"moondream:latest"');
-    localStorage.setItem(StorageKeys.llmThinkingMode, '"thinking"');
-    localStorage.setItem(StorageKeys.vlmThinkingMode, '"thinking"');
-    localStorage.setItem(StorageKeys.vlmBehavior, '"agent"');
-    localStorage.setItem(StorageKeys.vlmGuidePromptChoice, '"select"');
-    localStorage.setItem(StorageKeys.vlmAgentHistoryLimit, "8");
+    localStorage.setItem(StorageKeys.llmThinkingMode, '"low"');
+    localStorage.setItem(StorageKeys.vlmThinkingMode, '"low"');
+    localStorage.setItem(StorageKeys.vlmBehavior, '"guide"');
+    localStorage.setItem(StorageKeys.vlmGuidePromptChoice, '"compose"');
+    localStorage.setItem(StorageKeys.vlmGuideHistoryLimit, "8");
     localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
     localStorage.setItem(StorageKeys.vlmGuidePrompt, '"Choose a location."');
     localStorage.setItem(
       StorageKeys.vlmSelectPrompt,
       '"Choose prompt {prompt_pool}."',
     );
-    localStorage.setItem(StorageKeys.vlmAgentPrompt, '"Choose an edit."');
+    localStorage.setItem(StorageKeys.vlmComposePrompt, '"Choose an edit."');
     localStorage.setItem(
       StorageKeys.vlmHybridPrompt,
       '"Choose or write from {prompt_pool}."',
     );
-    localStorage.setItem(StorageKeys.vlmAgentActionHeight, "96");
+    localStorage.setItem(StorageKeys.vlmGuideActionHeight, "96");
     localStorage.setItem(StorageKeys.llmEnhancePrompt, '"custom {prompt}"');
     localStorage.setItem(StorageKeys.compositeMatteEnabled, "true");
     localStorage.setItem(StorageKeys.heatmapMatteEnabled, "true");
@@ -424,34 +424,23 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmThinkingMode).toBe("low");
     expect(useStore.getState().vlmBehavior).toBe("guide");
     expect(useStore.getState().vlmGuidePromptChoice).toBe("compose");
-    expect(localStorage.getItem(StorageKeys.vlmBehavior)).toBe('"guide"');
-    expect(localStorage.getItem(StorageKeys.vlmGuidePromptChoice)).toBe(
-      '"compose"',
-    );
-    expect(useStore.getState().vlmAgentHistoryLimit).toBe(8);
+    expect(useStore.getState().vlmGuideHistoryLimit).toBe(8);
     expect(useStore.getState().vlmScope).toBe("canvas");
     expect(useStore.getState().vlmGuidePrompt).toBe("Choose a location.");
     expect(useStore.getState().vlmSelectPrompt).toBe(
       "Choose prompt {prompt_pool}.",
     );
-    expect(useStore.getState().vlmAgentPrompt).toBe("Choose an edit.");
+    expect(useStore.getState().vlmComposePrompt).toBe("Choose an edit.");
     expect(useStore.getState().vlmHybridPrompt).toBe(
       "Choose or write from {prompt_pool}.",
     );
-    expect(useStore.getState().vlmAgentActionHeight).toBe(96);
+    expect(useStore.getState().vlmGuideActionHeight).toBe(96);
     expect(useStore.getState().llmEnhancePrompt).toBe("custom {prompt}");
     expect(useStore.getState().compositeMatteEnabled).toBe(true);
     expect(useStore.getState().heatmapMatteEnabled).toBe(true);
     expect(useStore.getState().matteColor).toBe("#123abc");
     expect(useStore.getState().uiScale).toBe(72);
     expect(useStore.getState().cropBoxBorderWidth).toBe(7);
-  });
-
-  it("uses legacy matteEnabled as a fallback for split matte settings", async () => {
-    localStorage.setItem(StorageKeys.matteEnabled, "true");
-    const { useStore } = await import("./index");
-    expect(useStore.getState().compositeMatteEnabled).toBe(true);
-    expect(useStore.getState().heatmapMatteEnabled).toBe(true);
   });
 
   it("falls back when persisted matte color is invalid", async () => {

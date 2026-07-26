@@ -10,13 +10,7 @@
  * No DOM dependencies, no async, no I/O. Trivially unit-testable with Vitest.
  */
 
-// `WorkflowType` lives in generation/workflows.ts (canonical home, alongside
-// determineWorkflowType which produces it). Imported as a type-only ref so
-// no runtime dependency on the generation module is introduced. Re-exported
-// here for the convenience of legacy callers that pulled it from this module.
 import type { WorkflowType } from "../generation/workflows";
-
-export type { WorkflowType };
 
 export interface Size {
   width: number;

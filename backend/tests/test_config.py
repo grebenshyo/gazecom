@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from gengaze.config import Settings, get_settings
 from gengaze.launcher import _ensure_workflows_dir
 from gengaze.main import create_app
-from gengaze.user_config import config_dir, config_path, load_config
+from gengaze.user_config import config_dir, config_path
 
 
 @pytest.fixture
@@ -166,22 +166,3 @@ def test_config_delete_resets_overrides_and_preserves_user_data(
     assert not config_path().exists()
     assert saved_image.read_bytes() == b"user image"
     assert client.delete("/api/config").status_code == 200
-
-
-def test_legacy_user_data_is_migrated(
-    client: TestClient,
-) -> None:
-    current = config_dir()
-    legacy = current.with_name("GenGaze")
-    legacy.mkdir(parents=True)
-    (legacy / "config.json").write_text(
-        '{"comfy_host": "legacy.local:8188"}',
-        encoding="utf-8",
-    )
-    images = legacy / "images"
-    images.mkdir()
-    (images / "saved.png").write_bytes(b"legacy image")
-
-    assert load_config()["comfy_host"] == "legacy.local:8188"
-    assert (current / "config.json").is_file()
-    assert (current / "images" / "saved.png").read_bytes() == b"legacy image"

@@ -11,8 +11,6 @@ inside the (possibly code-signed / read-only) app bundle:
   Windows: %APPDATA%\\gazeCOM\\config.json
   Linux:   $XDG_CONFIG_HOME/gazeCOM/config.json  (or ~/.config/gazeCOM)
 
-Existing ``GenGaze`` data is copied to the renamed directory on first use.
-
 Runtime config resolution: this file (if set) overrides the `Settings`
 value (env/.env), which itself falls back to the built-in default. So the
 dev/.env workflow is unchanged, and the packaged app is configured in-UI
@@ -24,7 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -35,7 +32,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _APP_NAME = "gazeCOM"
-_LEGACY_APP_NAME = "GenGaze"
 
 
 def _config_base() -> Path:
@@ -47,23 +43,8 @@ def _config_base() -> Path:
 
 
 def config_dir() -> Path:
-    """Return the gazeCOM data directory, migrating the legacy name once."""
-    base = _config_base()
-    current = base / _APP_NAME
-    legacy = base / _LEGACY_APP_NAME
-    if current.exists() or not legacy.is_dir():
-        return current
-
-    try:
-        shutil.copytree(legacy, current)
-    except FileExistsError:
-        pass
-    except OSError as e:
-        # A read-only parent should not make an existing installation lose
-        # its settings or images. Keep using the legacy directory instead.
-        log.warning("Could not migrate user data from %s to %s: %s", legacy, current, e)
-        return legacy
-    return current
+    """Return the gazeCOM data directory."""
+    return _config_base() / _APP_NAME
 
 
 def config_path() -> Path:

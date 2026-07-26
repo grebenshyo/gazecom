@@ -6,89 +6,77 @@
  * a key is a one-line change and stale keys can't accumulate.
  */
 
-/** All localStorage keys used by gazeCOM. Legacy key names preserve settings. */
+/** All localStorage keys used by gazeCOM. */
 export const StorageKeys = {
   // tracking
-  trackingMode: "gengaze.trackingMode",
-  trackingProfiles: "gengaze.trackingProfiles",
-  roamSpeed: "gengaze.roamSpeed",
-  trailLength: "gengaze.trailLength",
-  eventHistoryLength: "gengaze.eventHistoryLength",
-  pointSize: "gengaze.pointSize",
-  pointJitter: "gengaze.pointJitter",
+  trackingMode: "gazecom.trackingMode",
+  trackingProfiles: "gazecom.trackingProfiles",
+  eventHistoryLength: "gazecom.eventHistoryLength",
   // modes
-  feedbackMode: "gengaze.feedbackMode",
-  iterativeMode: "gengaze.iterativeMode",
-  iterativeDelay: "gengaze.iterativeDelay",
-  comMode: "gengaze.comMode",
-  compositeMode: "gengaze.compositeMode",
-  compositeFitEnabled: "gengaze.compositeFitEnabled",
-  compositeFitTarget: "gengaze.compositeFitTarget",
-  canvasVisible: "gengaze.canvasVisible",
-  heatmapVisible: "gengaze.heatmapVisible",
-  frameZoom: "gengaze.frameZoom",
-  autoCollapsePanels: "gengaze.autoCollapsePanels",
-  boundsEnabled: "gengaze.boundsEnabled",
-  boundsWidth: "gengaze.boundsWidth",
-  boundsHeight: "gengaze.boundsHeight",
-  skipProviderErrors: "gengaze.skipProviderErrors",
-  autoDownloadEvery: "gengaze.autoDownloadEvery",
-  autoClearEvery: "gengaze.autoClearEvery",
-  matteEnabled: "gengaze.matteEnabled",
-  compositeMatteEnabled: "gengaze.compositeMatteEnabled",
-  heatmapMatteEnabled: "gengaze.heatmapMatteEnabled",
-  matteColor: "gengaze.matteColor",
+  feedbackMode: "gazecom.feedbackMode",
+  iterativeMode: "gazecom.iterativeMode",
+  iterativeDelay: "gazecom.iterativeDelay",
+  comMode: "gazecom.comMode",
+  compositeMode: "gazecom.compositeMode",
+  compositeFitEnabled: "gazecom.compositeFitEnabled",
+  compositeFitTarget: "gazecom.compositeFitTarget",
+  canvasVisible: "gazecom.canvasVisible",
+  heatmapVisible: "gazecom.heatmapVisible",
+  frameZoom: "gazecom.frameZoom",
+  autoCollapsePanels: "gazecom.autoCollapsePanels",
+  boundsEnabled: "gazecom.boundsEnabled",
+  boundsWidth: "gazecom.boundsWidth",
+  boundsHeight: "gazecom.boundsHeight",
+  skipProviderErrors: "gazecom.skipProviderErrors",
+  autoDownloadEvery: "gazecom.autoDownloadEvery",
+  autoClearEvery: "gazecom.autoClearEvery",
+  compositeMatteEnabled: "gazecom.compositeMatteEnabled",
+  heatmapMatteEnabled: "gazecom.heatmapMatteEnabled",
+  matteColor: "gazecom.matteColor",
   // generation
-  pinnedWorkflows: "gengaze.pinnedWorkflows",
-  mutedWorkflows: "gengaze.mutedWorkflows",
-  selectedImage: "gengaze.selectedImage",
-  steps: "gengaze.steps",
+  pinnedWorkflows: "gazecom.pinnedWorkflows",
+  mutedWorkflows: "gazecom.mutedWorkflows",
+  selectedImage: "gazecom.selectedImage",
+  steps: "gazecom.steps",
   // prompts
-  promptList: "gengaze.promptList",
-  pinnedPrompts: "gengaze.pinnedPrompts",
-  llmModel: "gengaze.llmModel",
-  llmThinkingMode: "gengaze.llmThinkingMode",
-  vlmModel: "gengaze.vlmModel",
-  vlmThinkingMode: "gengaze.vlmThinkingMode",
-  vlmBehavior: "gengaze.vlmBehavior",
-  vlmGuidePromptChoice: "gengaze.vlmGuidePromptChoice",
-  vlmAgentHistoryLimit: "gengaze.vlmAgentHistoryLimit",
-  vlmScope: "gengaze.vlmScope",
-  llmEnhancePrompt: "gengaze.llmEnhancePrompt",
-  vlmPointPrompt: "gengaze.vlmPointPrompt",
-  vlmGuidePrompt: "gengaze.vlmGuidePrompt",
-  vlmSelectPrompt: "gengaze.vlmSelectPrompt",
-  vlmAgentPrompt: "gengaze.vlmAgentPrompt",
-  vlmHybridPrompt: "gengaze.vlmHybridPrompt",
-  vlmPointPromptHeight: "gengaze.vlmPointPromptHeight",
-  vlmAgentActionHeight: "gengaze.vlmAgentActionHeight",
+  promptList: "gazecom.promptList",
+  pinnedPrompts: "gazecom.pinnedPrompts",
+  llmModel: "gazecom.llmModel",
+  llmThinkingMode: "gazecom.llmThinkingMode",
+  vlmModel: "gazecom.vlmModel",
+  vlmThinkingMode: "gazecom.vlmThinkingMode",
+  vlmBehavior: "gazecom.vlmBehavior",
+  vlmGuidePromptChoice: "gazecom.vlmGuidePromptChoice",
+  vlmGuideHistoryLimit: "gazecom.vlmGuideHistoryLimit",
+  vlmScope: "gazecom.vlmScope",
+  llmEnhancePrompt: "gazecom.llmEnhancePrompt",
+  vlmPointPrompt: "gazecom.vlmPointPrompt",
+  vlmGuidePrompt: "gazecom.vlmGuidePrompt",
+  vlmSelectPrompt: "gazecom.vlmSelectPrompt",
+  vlmComposePrompt: "gazecom.vlmComposePrompt",
+  vlmHybridPrompt: "gazecom.vlmHybridPrompt",
+  vlmPointPromptHeight: "gazecom.vlmPointPromptHeight",
+  vlmGuideActionHeight: "gazecom.vlmGuideActionHeight",
   // ui
-  theme: "gengaze.theme",
-  panelPosition: "gengaze.panelPosition",
-  panelMinimized: "gengaze.panelMinimized",
-  uiScale: "gengaze.uiScale",
-  showWelcome: "gengaze.showWelcome",
-  heatmapStyle: "gengaze.heatmapStyle",
-  cropBoxVisible: "gengaze.cropBoxVisible",
-  cropBoxBorderWidth: "gengaze.cropBoxBorderWidth",
-  calibCache: "gengaze.calibCache",
-  sectionsExpanded: "gengaze.sectionsExpanded",
+  theme: "gazecom.theme",
+  panelPosition: "gazecom.panelPosition",
+  panelMinimized: "gazecom.panelMinimized",
+  uiScale: "gazecom.uiScale",
+  showWelcome: "gazecom.showWelcome",
+  heatmapStyle: "gazecom.heatmapStyle",
+  cropBoxVisible: "gazecom.cropBoxVisible",
+  cropBoxBorderWidth: "gazecom.cropBoxBorderWidth",
+  calibCache: "gazecom.calibCache",
+  sectionsExpanded: "gazecom.sectionsExpanded",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
 
 const SETTINGS_FILE_FORMAT = "gazeCOM-settings";
-const SETTINGS_FILE_SCHEMA = 1;
-const LEGACY_SETTING_NAMES = new Set<keyof typeof StorageKeys>([
-  "roamSpeed",
-  "trailLength",
-  "pointSize",
-  "pointJitter",
-  "matteEnabled",
-]);
-const EXPORTABLE_SETTINGS = Object.entries(StorageKeys).filter(
-  ([name]) => !LEGACY_SETTING_NAMES.has(name as keyof typeof StorageKeys),
-) as Array<[keyof typeof StorageKeys, StorageKey]>;
+const SETTINGS_FILE_SCHEMA = 2;
+const EXPORTABLE_SETTINGS = Object.entries(StorageKeys) as Array<
+  [keyof typeof StorageKeys, StorageKey]
+>;
 const EXPORTABLE_SETTING_NAMES = new Map(EXPORTABLE_SETTINGS);
 
 export interface SettingsFile {
@@ -128,12 +116,12 @@ export function clearKey(key: StorageKey): void {
 }
 
 /** Wipe all gazeCOM keys. Used by the "Reset All Settings" button. */
-export function clearAllGenGazeKeys(): void {
+export function clearAllGazeComKeys(): void {
   try {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith("gengaze.")) keys.push(k);
+      if (k && k.startsWith("gazecom.")) keys.push(k);
     }
     for (const k of keys) localStorage.removeItem(k);
   } catch {
@@ -188,7 +176,7 @@ export function applySettingsFile(input: unknown): number {
   // Missing values intentionally become fresh-install defaults. Clear only
   // gazeCOM's browser settings; service hosts live in the backend and remain
   // machine-local.
-  clearAllGenGazeKeys();
+  clearAllGazeComKeys();
   for (const [key, value] of accepted) writeJSON(key, value);
   return accepted.length;
 }
@@ -243,7 +231,7 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "boundsHeight":
     case "cropBoxBorderWidth":
     case "vlmPointPromptHeight":
-    case "vlmAgentActionHeight":
+    case "vlmGuideActionHeight":
       return isFiniteNumber(value);
     case "steps":
       return value === null || isFiniteNumber(value);
@@ -265,15 +253,14 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "vlmPointPrompt":
     case "vlmGuidePrompt":
     case "vlmSelectPrompt":
-    case "vlmAgentPrompt":
+    case "vlmComposePrompt":
     case "vlmHybridPrompt":
       return typeof value === "string";
     case "vlmBehavior":
-      // "agent" remains valid for importing settings from pre-consolidation builds.
-      return isOneOf(value, ["point", "guide", "agent"]);
+      return isOneOf(value, ["point", "guide"]);
     case "vlmGuidePromptChoice":
       return isOneOf(value, ["rotate", "select", "compose", "hybrid"]);
-    case "vlmAgentHistoryLimit":
+    case "vlmGuideHistoryLimit":
       return (
         isFiniteNumber(value) &&
         Number.isInteger(value) &&
@@ -304,13 +291,6 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
       return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
     case "sectionsExpanded":
       return isBooleanRecord(value);
-    // Legacy keys are deliberately absent from EXPORTABLE_SETTINGS.
-    case "roamSpeed":
-    case "trailLength":
-    case "pointSize":
-    case "pointJitter":
-    case "matteEnabled":
-      return false;
   }
 }
 

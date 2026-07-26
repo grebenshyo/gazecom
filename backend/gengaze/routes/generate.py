@@ -7,8 +7,7 @@ filesystem access to ComfyUI's folders and can drive a ComfyUI running
 on any reachable host — only ``COMFY_HOST`` is required.
 
 The frontend submits multipart form fields
-``image | selected_image``, ``workflow``, ``prompt``, ``steps`` → returns an
-``image/png`` stream.
+``image``, ``workflow``, ``prompt``, ``steps`` → returns an ``image/png`` stream.
 """
 
 from __future__ import annotations
@@ -34,31 +33,6 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _resolve_input_image(
-    image: UploadFile | None,
-    selected_image: str,
-    settings: Settings,
-) -> tuple[bytes, str]:
-    """Return ``(image_bytes, source_filename)`` for the generation input.
-
-    Either a server-side reference image (``selected_image``, read from
-    gazeCOM's own ``images_dir``) or a posted upload (the frontend's
-    heatmap capture). The bytes are uploaded to ComfyUI via its API by
-    the caller — nothing touches ComfyUI's filesystem here.
-    """
-    if selected_image:
-        src = settings.images_dir / selected_image
-        if not src.exists():
-            raise HTTPException(400, f"Selected image not found: {selected_image}")
-        return src.read_bytes(), selected_image
-
-    if image is not None:
-        # FastAPI's UploadFile is synchronous when read via .file
-        return image.file.read(), image.filename or "input.png"
-
-    raise HTTPException(400, "No image provided.")
-
-
 # Class types whose execution errors are swallowed when the
 # `skip_provider_errors` flag is set. Cloud-backed nodes commonly refuse on
 # policy/safety/quota grounds — those failures are expected and the user
@@ -66,12 +40,11 @@ def _resolve_input_image(
 _SWALLOWABLE_NODE_CLASSES = frozenset({"GeminiStudio", "OpenAIStudio"})
 
 
-@router.post("/generate", summary="Generate AI-enhanced image (or LLM text)")
+@router.post("/generate", summary="Generate an image through ComfyUI")
 async def generate(
-    image: UploadFile | None = File(None),
+    image: UploadFile = File(...),
     prompt: str = Form(""),
     workflow: str = Form(...),
-    selected_image: str = Form(""),
     steps: int = Form(20),
     skip_provider_errors: bool = Form(False),
     settings: Settings = Depends(get_settings),
@@ -84,15 +57,11 @@ async def generate(
     #    API. The returned name (ComfyUI may rename on collision) is what
     #    the LoadImage node references. A stable per-purpose name with
     #    overwrite keeps ComfyUI's input folder from accumulating a file
-    #    per generation. The name derives from the client's imageName stem
-    #    (gengaze_input / gengaze_edit_input / gengaze_llm / ...) rather
-    #    than one shared name: generations are single-flight, but an LLM
-    #    enhance can run concurrently with a generation — with a single
-    #    shared name its placeholder upload could overwrite the
-    #    generation's input in the window before LoadImage executes.
-    img_bytes, source_name = _resolve_input_image(image, selected_image, settings)
+    #    per generation.
+    img_bytes = await image.read()
+    source_name = image.filename or "input.png"
     src = Path(source_name)
-    upload_name = f"gengaze_{src.stem or 'input'}{src.suffix or '.png'}"
+    upload_name = f"gazecom_{src.stem or 'input'}{src.suffix or '.png'}"
     try:
         input_filename = await client.upload_image(img_bytes, upload_name)
     except ComfyError as e:

@@ -222,7 +222,7 @@ export function ControlPanel({
   const [matteColorDraft, setMatteColorDraft] = useState(s.matteColor);
   const selectedImageSeedRef = useRef<string | null>(null);
   const vlmPromptRef = useRef<HTMLTextAreaElement | null>(null);
-  const vlmAgentActionRef = useRef<HTMLTextAreaElement | null>(null);
+  const vlmGuideActionRef = useRef<HTMLTextAreaElement | null>(null);
 
   /**
    * Whether the prompt controls (List / Template / LLM prompt / models) are shown
@@ -271,13 +271,13 @@ export function ControlPanel({
     ) {
       return;
     }
-    const textarea = vlmAgentActionRef.current;
+    const textarea = vlmGuideActionRef.current;
     if (!textarea) return;
     let timer: number | null = null;
     const saveHeight = () => {
       const height = textarea.offsetHeight;
-      if (height > 0 && height !== useStore.getState().vlmAgentActionHeight) {
-        useStore.getState().set("vlmAgentActionHeight", height);
+      if (height > 0 && height !== useStore.getState().vlmGuideActionHeight) {
+        useStore.getState().set("vlmGuideActionHeight", height);
       }
     };
     const observer = new ResizeObserver(() => {
@@ -511,9 +511,9 @@ export function ControlPanel({
           baseCOM: { x: 0.5, y: 0.5 },
           isComposited: false,
           vlmPoint: null,
-          vlmAgentAction: null,
-          vlmAgentHistory: [],
-          vlmAgentWorkspaceReady: false,
+          vlmGuideAction: null,
+          vlmGuideHistory: [],
+          vlmGuideWorkspaceReady: false,
         });
       } catch (err) {
         if (!cancelled) {
@@ -560,7 +560,7 @@ export function ControlPanel({
       | "vlmPointPrompt"
       | "vlmGuidePrompt"
       | "vlmSelectPrompt"
-      | "vlmAgentPrompt"
+      | "vlmComposePrompt"
       | "vlmHybridPrompt";
     value: string;
   } =
@@ -579,8 +579,8 @@ export function ControlPanel({
         : s.vlmGuidePromptChoice === "compose"
           ? {
               label: "Compose prompt",
-              key: "vlmAgentPrompt",
-              value: s.vlmAgentPrompt,
+              key: "vlmComposePrompt",
+              value: s.vlmComposePrompt,
             }
           : s.vlmGuidePromptChoice === "hybrid"
             ? {
@@ -598,14 +598,14 @@ export function ControlPanel({
     (s.vlmGuidePromptChoice === "compose" ||
       s.vlmGuidePromptChoice === "hybrid");
   const nextActionText =
-    s.vlmAgentAction &&
-    "instruction" in s.vlmAgentAction &&
-    typeof s.vlmAgentAction.instruction === "string"
-      ? s.vlmAgentAction.instruction
-      : s.vlmAgentAction &&
-          "promptText" in s.vlmAgentAction &&
-          typeof s.vlmAgentAction.promptText === "string"
-        ? s.vlmAgentAction.promptText
+    s.vlmGuideAction &&
+    "instruction" in s.vlmGuideAction &&
+    typeof s.vlmGuideAction.instruction === "string"
+      ? s.vlmGuideAction.instruction
+      : s.vlmGuideAction &&
+          "promptText" in s.vlmGuideAction &&
+          typeof s.vlmGuideAction.promptText === "string"
+        ? s.vlmGuideAction.promptText
         : "";
   const llmModelOptions = (() => {
     const placeholder =
@@ -763,11 +763,11 @@ export function ControlPanel({
             {s.vlmBehavior !== "point" && (
               <NumberInput
                 label="History"
-                value={s.vlmAgentHistoryLimit}
+                value={s.vlmGuideHistoryLimit}
                 min={0}
                 max={100}
                 step={1}
-                onChange={(v) => s.set("vlmAgentHistoryLimit", v)}
+                onChange={(v) => s.set("vlmGuideHistoryLimit", v)}
               />
             )}
             {s.vlmBehavior === "point" && (
@@ -810,17 +810,17 @@ export function ControlPanel({
                 )}
               {showsNextAction && (
                 <textarea
-                  ref={vlmAgentActionRef}
+                  ref={vlmGuideActionRef}
                   className="gz-prompt-slot__derived"
                   aria-label="Next VLM action"
                   value={nextActionText}
                   placeholder="Next action will appear here..."
                   readOnly
                   rows={2}
-                  style={{ height: s.vlmAgentActionHeight }}
+                  style={{ height: s.vlmGuideActionHeight }}
                   onPointerUp={(e) => {
                     const height = e.currentTarget.offsetHeight;
-                    if (height > 0) s.set("vlmAgentActionHeight", height);
+                    if (height > 0) s.set("vlmGuideActionHeight", height);
                   }}
                 />
               )}

@@ -50,7 +50,7 @@ import {
   type OllamaThinkingMode,
   type TrackingMode,
   type VLMCanvasAction,
-  type VLMAgentAction,
+  type VLMComposeAction,
   type VLMGuidePromptChoice,
   type VLMHybridSelectAction,
   type VLMHybridWriteAction,
@@ -192,7 +192,7 @@ export async function generateOnce(
     let prompt: string;
     const promptChoice = useStore.getState().vlmGuidePromptChoice;
     const pendingAction = canvasVlmActive
-      ? useStore.getState().vlmAgentAction
+      ? useStore.getState().vlmGuideAction
       : null;
     const authoredAction =
       pendingAction && isAuthoredAction(pendingAction)
@@ -218,7 +218,7 @@ export async function generateOnce(
           pendingAction !== null &&
           isHybridAction(pendingAction) &&
           pendingAction.hybridSource === "pool")
-          ? promptState.vlmAgentAction
+          ? promptState.vlmGuideAction
           : null;
       const selectedByVlm =
         selectedAction !== null && isSelectAction(selectedAction);
@@ -269,9 +269,9 @@ export async function generateOnce(
       );
       syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
       if (selectedByVlm) {
-        const pending = useStore.getState().vlmAgentAction;
+        const pending = useStore.getState().vlmGuideAction;
         if (pending && isSelectAction(pending)) {
-          useStore.getState().set("vlmAgentAction", {
+          useStore.getState().set("vlmGuideAction", {
             ...pending,
             appliedPromptText: prompt,
           });
@@ -321,7 +321,7 @@ export async function generateOnce(
     // `myEpoch` covers Pull/Clear discard (no abort, no halt, just drop
     // this one result so the user's focus-shift action takes priority).
     const completedCanvasAction = canvasVlmActive
-      ? useStore.getState().vlmAgentAction
+      ? useStore.getState().vlmGuideAction
       : null;
     const applied = await applyResult(
       ctx,
@@ -335,14 +335,14 @@ export async function generateOnce(
     if (completedCanvasAction) {
       const live = useStore.getState();
       const history =
-        live.vlmAgentHistoryLimit === 0
+        live.vlmGuideHistoryLimit === 0
           ? []
-          : [...live.vlmAgentHistory, completedCanvasAction].slice(
-              -live.vlmAgentHistoryLimit,
+          : [...live.vlmGuideHistory, completedCanvasAction].slice(
+              -live.vlmGuideHistoryLimit,
             );
       live.patch({
-        vlmAgentAction: null,
-        vlmAgentHistory: history,
+        vlmGuideAction: null,
+        vlmGuideHistory: history,
       });
     }
 
@@ -529,9 +529,9 @@ async function ensureCanvasAction(
   myEpoch?: number,
   staleRetry = 0,
 ): Promise<boolean> {
-  const pending = useStore.getState().vlmAgentAction;
+  const pending = useStore.getState().vlmGuideAction;
   if (pending && pendingActionMatchesState(pending)) return true;
-  if (pending) useStore.getState().set("vlmAgentAction", null);
+  if (pending) useStore.getState().set("vlmGuideAction", null);
   await prepareGuideWorkspace();
   if (signal?.aborted) {
     throw new DOMException(
@@ -604,7 +604,7 @@ async function prepareGuideWorkspace(): Promise<void> {
     useStore.getState().patch({
       comMode: true,
       compositeMode: true,
-      vlmAgentWorkspaceReady: true,
+      vlmGuideWorkspaceReady: true,
     });
     return;
   }
@@ -618,7 +618,7 @@ async function prepareGuideWorkspace(): Promise<void> {
     );
   }
   if (
-    state.vlmAgentWorkspaceReady &&
+    state.vlmGuideWorkspaceReady &&
     source?.width === width &&
     source.height === height
   ) {
@@ -672,8 +672,8 @@ async function prepareGuideWorkspace(): Promise<void> {
       : null,
     comMode: true,
     compositeMode: true,
-    vlmAgentAction: null,
-    vlmAgentWorkspaceReady: true,
+    vlmGuideAction: null,
+    vlmGuideWorkspaceReady: true,
   });
 }
 
@@ -767,7 +767,7 @@ async function requestGuideDecision(
     choice === "select"
       ? live.vlmSelectPrompt
       : choice === "compose"
-        ? live.vlmAgentPrompt
+        ? live.vlmComposePrompt
         : choice === "hybrid"
           ? live.vlmHybridPrompt
           : live.vlmGuidePrompt
@@ -806,7 +806,7 @@ async function requestGuideDecision(
     }
     try {
       const rawHistory =
-        live.vlmAgentHistoryLimit === 0 ? [] : live.vlmAgentHistory;
+        live.vlmGuideHistoryLimit === 0 ? [] : live.vlmGuideHistory;
       if (choice === "compose") {
         const decision = await provider.compose(
           frame,
@@ -954,13 +954,13 @@ function isPureSelectAction(action: VLMCanvasAction): action is VLMSelectAction 
   return isSelectAction(action) && !isHybridAction(action);
 }
 
-function isComposeAction(action: VLMCanvasAction): action is VLMAgentAction {
+function isComposeAction(action: VLMCanvasAction): action is VLMComposeAction {
   return isAuthoredAction(action) && !isHybridAction(action);
 }
 
 function isAuthoredAction(
   action: VLMCanvasAction,
-): action is VLMAgentAction | VLMHybridWriteAction {
+): action is VLMComposeAction | VLMHybridWriteAction {
   return (
     "instruction" in action &&
     typeof action.instruction === "string"
@@ -1011,7 +1011,7 @@ async function applyGuideDecision(
     pullPositionForCanvasPoint(normalized, canvasSize),
   );
   useStore.getState().patch({
-    vlmAgentAction: normalized,
+    vlmGuideAction: normalized,
     // Pull centers the selected canvas coordinate in the local generation frame.
     vlmPoint: { x: 0.5, y: 0.5 },
   });
