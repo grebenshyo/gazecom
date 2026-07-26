@@ -3,12 +3,14 @@ message: "If you use gazeCOM in research, software, or artistic work, please cit
 title: "gazeCOM"
 abstract: >-
   gazeCOM is an open-source system for saliency-driven iterative image
-  generation and composition. Its central method grounds generation in a
-  discrete canvas coordinate system: coordinates derived from human input,
-  algorithmic movement, computer vision, or a vision-language model determine
-  both the image region passed to generation and the placement of each result
-  in a persistent composite. The VLM Guide extends this system with
-  model-selected placement, prompt decisions, and bounded visual memory.
+  generation and composition. It introduces a point-centered method for image
+  extension: instead of specifying a boundary to which an image should be
+  outpainted, it defines a point of interest and generates a fixed-size crop
+  around that coordinate. The same coordinate anchors the result's placement
+  in a persistent composite. Human input, algorithmic movement, and computer
+  vision provide interchangeable ways to select the point. The VLM Guide adds
+  model-selected placement, prompt decisions, and bounded visual memory on top
+  of this coordinate system.
 authors:
   - name: "grebenshyo"
 version: "0.3.0"
