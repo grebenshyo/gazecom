@@ -1,7 +1,7 @@
 name: Release Build
 
 # Freezes the desktop app for macOS and Windows. Push a version tag
-# (e.g. `git tag v0.3.0 && git push origin v0.3.0`) to build and attach the
+# (e.g. `git tag vX.Y.Z && git push origin vX.Y.Z`) to build and attach the
 # artifacts to a GitHub Release. `workflow_dispatch` builds the artifacts on
 # demand without publishing a release (useful for smoke-testing the freeze).
 on:

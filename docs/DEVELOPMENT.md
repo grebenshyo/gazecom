@@ -183,7 +183,7 @@ gated on `v*` tags, and attaches the zipped artifacts to a GitHub Release.
 the freeze). Tag a version to cut a release:
 
 ```bash
-git tag v0.2.1 && git push origin v0.2.1
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 ## Workflows
