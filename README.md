@@ -7,11 +7,9 @@ result is anchored on a composite canvas.
 
 Tracking is organized around two drivers:
 
-- **Interactive modes** build temporal saliency from gaze movements, hand
-  gestures, cursor input, camera-based computer vision, or algorithmic
-  movement.
-- **VLM** derives saliency from a vision model's analysis of the image or
-  composite.
+- **Interactive modes** use gaze movements, hand gestures, cursor input,
+  camera-based computer vision, or algorithmic movement.
+- **VLM** uses a vision model to analyze the image or composite.
 
 gazeCOM connects to [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for
 image generation and to [Ollama](https://ollama.com/) for language and vision
@@ -21,26 +19,23 @@ models.
 
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
-[How it works](#how-it-works) · [Install](#install) ·
-[Technical overview](#technical-overview) · [Quick start](#quick-start) ·
+[Quick start](#quick-start) · [Install](#install) ·
+[How it works](#how-it-works) · [Technical overview](#technical-overview) ·
 [Settings and data](#settings-and-data) · [Documentation](#documentation) ·
 [Build from source](#build-from-source)
 
-## How it works
+## Quick start
 
-1. The selected driver supplies one or more saliency points.
-2. The points accumulate into a saliency heatmap.
-3. Their weighted spatial distribution determines the center of mass (COM),
-   which becomes the driving coordinate.
-4. A 1024 x 1024 region centered on COM is submitted to ComfyUI.
-5. The generated patch is placed at the corresponding canvas position.
-6. Iterative mode repeats the pipeline from the updated state.
+1. Open **Settings** and enter the ComfyUI host.
+2. Enter the Ollama host when using VLM or language features.
+3. Pin an Edit workflow.
+4. Select an input image or use the blank canvas.
+5. Choose an Interactive mode or VLM under **Tracking**.
+6. Start tracking and generate.
+7. Enable **Iterative** for automatic repetition.
 
-The composite operates on an infinite canvas with optional width and height
-limits.
-
-> **Tip:** **Pull** is a separate canvas control that extracts the currently
-> positioned 1024 x 1024 frame from the composite as the next working image.
+See the included [Guide](docs/GUIDE.md) for complete operating instructions.
+The same guide is available inside gazeCOM through the **?** button.
 
 ## Install
 
@@ -87,6 +82,22 @@ ComfyUI and Ollama may run locally or on the network. Service addresses are
 configured under **Settings > General**.
 
 > **Remote ComfyUI:** start the server with `--listen`.
+
+## How it works
+
+1. The selected driver supplies one or more saliency points.
+2. The points accumulate into a saliency heatmap.
+3. Their weighted spatial distribution determines the center of mass (COM),
+   which becomes the driving coordinate.
+4. A 1024 x 1024 region centered on COM is submitted to ComfyUI.
+5. The generated patch is placed at the corresponding canvas position.
+6. Iterative mode repeats the pipeline from the updated state.
+
+The composite operates on an infinite canvas with optional width and height
+limits.
+
+> **Tip:** **Pull** is a separate canvas control that extracts the currently
+> positioned 1024 x 1024 frame from the composite as the next working image.
 
 ## Technical overview
 
@@ -163,19 +174,6 @@ Downloaded builds load user workflows from:
 
 A user workflow with the same category and filename as a bundled workflow
 overrides the bundled file.
-
-## Quick start
-
-1. Open **Settings** and enter the ComfyUI host.
-2. Enter the Ollama host when using VLM or language features.
-3. Pin an Edit workflow.
-4. Select an input image or use the blank canvas.
-5. Choose an Interactive mode or VLM under **Tracking**.
-6. Start tracking and generate.
-7. Enable **Iterative** for automatic repetition.
-
-See the included [Guide](docs/GUIDE.md) for complete operating instructions.
-The same guide is available inside gazeCOM through the **?** button.
 
 ## Settings and data
 
