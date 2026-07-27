@@ -152,6 +152,13 @@ test("control panel renders all sections", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();
 
+  await expect(
+    page.getByRole("button", {
+      name: "Toggle tracking settings",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+
   for (const section of ["Prompting", "Workflow", "Settings", "Advanced", "View"]) {
     await expect(
       page.locator("button.gz-section__title").filter({

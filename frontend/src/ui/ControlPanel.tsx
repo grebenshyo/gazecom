@@ -236,7 +236,7 @@ export function ControlPanel({
       ...s.sectionsExpanded,
       "prompting.settings": !promptSettingsOpen,
     });
-  const trackingSettingsOpen = s.sectionsExpanded["tracking.settings"] ?? false;
+  const trackingSettingsOpen = s.sectionsExpanded["tracking.settings"] ?? true;
   const toggleTrackingSettings = () =>
     s.set("sectionsExpanded", {
       ...s.sectionsExpanded,
@@ -1776,7 +1776,7 @@ const DEFAULT_SECTION_EXPANDED: Record<string, boolean> = {
   "prompting.settings": false,
   workflow: true,
   tracking: true,
-  "tracking.settings": false,
+  "tracking.settings": true,
   settings: false,
   advanced: false,
   view: false,
