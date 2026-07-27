@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from gazecom.comfy_client import ComfyClient, ComfyError, pick_image_output_node
@@ -158,3 +159,20 @@ async def test_upload_image_raises_on_http_error(httpx_mock) -> None:
     )
     with pytest.raises(ComfyError):
         await ComfyClient("host:8188").upload_image(b"x", "x.png")
+
+
+async def test_upload_image_explains_connection_failure(httpx_mock) -> None:
+    httpx_mock.add_exception(
+        httpx.ConnectError("connection refused"),
+        method="POST",
+        url="http://host:8188/upload/image",
+    )
+
+    with pytest.raises(ComfyError) as error:
+        await ComfyClient("host:8188").upload_image(b"x", "x.png")
+
+    assert str(error.value) == (
+        "Could not connect to ComfyUI at http://host:8188 while uploading the "
+        "input image. Check the ComfyUI host in Settings > General and ensure "
+        "ComfyUI is running."
+    )

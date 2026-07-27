@@ -106,25 +106,44 @@ class ComfyClient:
         self.http_url = f"http://{host}"
         self.ws_url = f"ws://{host}/ws"
 
+    def _http_transport_error(
+        self,
+        operation: str,
+        error: httpx.HTTPError,
+    ) -> ComfyError:
+        if isinstance(error, httpx.ConnectError):
+            problem = f"Could not connect to ComfyUI at {self.http_url}"
+        elif isinstance(error, httpx.TimeoutException):
+            problem = f"Timed out contacting ComfyUI at {self.http_url}"
+        else:
+            problem = f"ComfyUI request to {self.http_url} failed"
+        return ComfyError(
+            f"{problem} while {operation}. Check the ComfyUI host in "
+            "Settings > General and ensure ComfyUI is running."
+        )
+
     # ── Submit ──────────────────────────────────────────────────────────
 
     async def submit(self, prompt: dict[str, Any], client_id: str) -> str:
         """POST a workflow to ComfyUI and return its ``prompt_id``."""
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.http_url}/prompt",
-                json={"prompt": prompt, "client_id": client_id},
-                headers={"Content-Type": "application/json"},
-            )
-            if resp.status_code != 200:
-                raise ComfyError(
-                    f"ComfyUI rejected workflow ({resp.status_code}): {resp.text}"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self.http_url}/prompt",
+                    json={"prompt": prompt, "client_id": client_id},
+                    headers={"Content-Type": "application/json"},
                 )
-            data = resp.json()
-            prompt_id = data.get("prompt_id")
-            if not prompt_id:
-                raise ComfyError(f"ComfyUI returned no prompt_id: {data}")
-            return prompt_id
+        except httpx.HTTPError as e:
+            raise self._http_transport_error("submitting the workflow", e) from e
+        if resp.status_code != 200:
+            raise ComfyError(
+                f"ComfyUI rejected workflow ({resp.status_code}): {resp.text}"
+            )
+        data = resp.json()
+        prompt_id = data.get("prompt_id")
+        if not prompt_id:
+            raise ComfyError(f"ComfyUI returned no prompt_id: {data}")
+        return prompt_id
 
     # ── Upload input image ──────────────────────────────────────────────
 
@@ -147,25 +166,28 @@ class ComfyClient:
         because it goes over HTTP, gazeCOM needs no write access to
         ComfyUI's input folder and can drive a ComfyUI on any host.
         """
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{self.http_url}/upload/image",
-                files={"image": (filename, data, "application/octet-stream")},
-                data={
-                    "type": image_type,
-                    "overwrite": "true" if overwrite else "false",
-                },
-            )
-            if resp.status_code != 200:
-                raise ComfyError(
-                    f"ComfyUI rejected image upload ({resp.status_code}): {resp.text}"
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{self.http_url}/upload/image",
+                    files={"image": (filename, data, "application/octet-stream")},
+                    data={
+                        "type": image_type,
+                        "overwrite": "true" if overwrite else "false",
+                    },
                 )
-            info = resp.json()
-            name = info.get("name")
-            if not name:
-                raise ComfyError(f"ComfyUI upload returned no name: {info}")
-            subfolder = info.get("subfolder") or ""
-            return f"{subfolder}/{name}" if subfolder else name
+        except httpx.HTTPError as e:
+            raise self._http_transport_error("uploading the input image", e) from e
+        if resp.status_code != 200:
+            raise ComfyError(
+                f"ComfyUI rejected image upload ({resp.status_code}): {resp.text}"
+            )
+        info = resp.json()
+        name = info.get("name")
+        if not name:
+            raise ComfyError(f"ComfyUI upload returned no name: {info}")
+        subfolder = info.get("subfolder") or ""
+        return f"{subfolder}/{name}" if subfolder else name
 
     # ── Submit + wait for output (websocket) ────────────────────────────
 
@@ -305,20 +327,23 @@ class ComfyClient:
     # ── Fetch image bytes ───────────────────────────────────────────────
 
     async def fetch_image(self, ref: ImageRef) -> bytes:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"{self.http_url}/view",
-                params={
-                    "filename": ref.filename,
-                    "subfolder": ref.subfolder,
-                    "type": ref.type,
-                },
-            )
-            if resp.status_code != 200:
-                raise ComfyError(
-                    f"Failed to fetch image {ref}: {resp.status_code} {resp.text}"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{self.http_url}/view",
+                    params={
+                        "filename": ref.filename,
+                        "subfolder": ref.subfolder,
+                        "type": ref.type,
+                    },
                 )
-            return resp.content
+        except httpx.HTTPError as e:
+            raise self._http_transport_error("downloading the generated image", e) from e
+        if resp.status_code != 200:
+            raise ComfyError(
+                f"Failed to fetch image {ref}: {resp.status_code} {resp.text}"
+            )
+        return resp.content
 
     # ── High-level helpers ──────────────────────────────────────────────
 

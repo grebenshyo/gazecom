@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from gazecom.comfy_client import ComfyError
 from gazecom.config import Settings, get_settings
 from gazecom.main import create_app
 from gazecom.workflow_catalog import resolve_workflow_path
@@ -89,6 +90,34 @@ def test_generate_accepts_empty_prompt(
     assert resp.status_code == 200
     assert captured["upload_name"] == "gazecom_input.png"
     assert captured["workflow"]["2"]["inputs"]["text"] == ""
+
+
+def test_generate_reports_comfyui_connection_failure(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = (
+        "Could not connect to ComfyUI at http://127.0.0.1:8188 while uploading "
+        "the input image. Check the ComfyUI host in Settings > General and "
+        "ensure ComfyUI is running."
+    )
+
+    async def fail_upload(_client, _data: bytes, _name: str) -> str:
+        raise ComfyError(message)
+
+    monkeypatch.setattr(
+        "gazecom.routes.generate.ComfyClient.upload_image",
+        fail_upload,
+    )
+
+    resp = client.post(
+        "/api/generate",
+        data={"prompt": "test", "workflow": "img/example.json"},
+        files={"image": ("input.png", b"input", "image/png")},
+    )
+
+    assert resp.status_code == 502
+    assert resp.json() == {"detail": message}
 
 
 # ── Workflows ───────────────────────────────────────────────────────────
