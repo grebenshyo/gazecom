@@ -512,6 +512,7 @@ async function maybeDescribeVisionPrompt(
 const VLM_POINT_ATTEMPTS = 3;
 const VLM_GUIDE_ATTEMPTS = 3;
 const MAX_GUIDE_WORKSPACE_PIXELS = 4096 * 4096;
+const VLM_GUIDE_MEMORY_MAX_EDGE = 512;
 
 function ollamaThinkFor(
   model: string,
@@ -847,6 +848,15 @@ async function requestGuideDecision(
         ? renderPromptPoolTemplate(template, candidates, canvasSize, bounds)
         : renderGuidePrompt(template, canvasSize, bounds);
   const frame = await captureVisionCanvas({ source: canvas });
+  // The current canvas retains the normal 1024px overview. Visual memory is
+  // contextual rather than coordinate-bearing, so keep its retained copy
+  // smaller to reduce two-image VLM requests without changing placement math.
+  const observedCanvas = live.vlmGuideVisualMemory
+    ? await captureVisionCanvas({
+        source: canvas,
+        maxEdge: VLM_GUIDE_MEMORY_MAX_EDGE,
+      })
+    : frame;
   const previousFrame = live.vlmGuideVisualMemory
     ? live.vlmGuidePreviousCanvas
     : null;
@@ -886,7 +896,7 @@ async function requestGuideDecision(
               y: decision.y,
               instruction: decision.instruction.trim(),
             },
-            observedCanvas: frame,
+            observedCanvas,
           };
         }
       } else if (choice === "select") {
@@ -924,7 +934,7 @@ async function requestGuideDecision(
               promptSlotSignature: candidate.slotSignature,
               promptText: candidate.prompt,
             },
-            observedCanvas: frame,
+            observedCanvas,
           };
         }
       } else if (choice === "hybrid") {
@@ -959,7 +969,7 @@ async function requestGuideDecision(
               promptId: 0,
               instruction: decision.instruction.trim(),
             },
-            observedCanvas: frame,
+            observedCanvas,
           };
         }
         if (decision?.source === "pool") {
@@ -982,7 +992,7 @@ async function requestGuideDecision(
               promptSlotSignature: candidate.slotSignature,
               promptText: candidate.prompt,
             },
-            observedCanvas: frame,
+            observedCanvas,
           };
         }
       } else {
@@ -996,7 +1006,7 @@ async function requestGuideDecision(
         if (decision) {
           return {
             action: { x: decision.x, y: decision.y },
-            observedCanvas: frame,
+            observedCanvas,
           };
         }
       }

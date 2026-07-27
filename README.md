@@ -14,7 +14,7 @@ Runs locally against your own [ComfyUI](https://github.com/comfyanonymous/ComfyU
 for image generation, with optional language and vision steps through
 [Ollama](https://ollama.com/).
 
-> Current version: v0.3.0. First published as v0.2.0; evolved from a 2025 prototype.
+> Current version: v0.3.1. First published as v0.2.0; evolved from a 2025 prototype.
 
 ![gazeCOM interface panels for prompting, workflows, saliency settings, and advanced controls](assets/gazecom-panels.jpg)
 
@@ -163,10 +163,12 @@ prompting cycles between off (`○`), send
 without replacing the slot (`↗`), and self-evolving replacement (`↻`). The
 per-slot vision button describes the current frame before generation and
 displays the returned prompt separately.
-VLM tracking has two behaviors under **Tracking**. **Point** locates saliency in
-either the latest generated frame or the complete composite; Canvas scope centers
-Pull on the returned coordinate. **Guide** always evaluates the complete canvas
-and returns the next Pull coordinate, with four choices for the generation text:
+The **Tracking** cog contains the active mode's controls. VLM has two behaviors:
+**Point** locates saliency in either the latest generated frame or the complete
+composite; Canvas scope centers Pull on the returned coordinate. **Guide**
+always evaluates the complete canvas and returns the next Pull coordinate, with
+four choices for the generation text. VLM driver instructions and Next action
+remain visible below Mode when the cog is closed:
 
 - **Rotate** pairs the coordinate with the normal weighted prompt rotation. Its
   optional **Pool context** toggle adds a visible, editable `{prompt_pool}`

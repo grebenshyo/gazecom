@@ -132,8 +132,9 @@ function HelpPanel({
               its declared <code>{"{steps:N}"}</code> default when available.
             </li>
             <li>
-              Choose an image and tracking mode under Tracking, then start
-              tracking to build a heatmap.
+              Choose an image and mode under Tracking, then start tracking to
+              build a heatmap. The Tracking cog reveals the selected mode's
+              controls.
             </li>
             <li>
               Enter a prompt and generate, or let Guide Compose supply the prompt.
@@ -189,10 +190,9 @@ function HelpPanel({
               whether to select one pool prompt without rewriting it or write its
               own complete prompt, which may adapt or combine ideas from the pool.
               Compose and Hybrid-written prompts appear under Next action. For a
-              Hybrid pool decision, Next action instead mirrors the selected
-              pool prompt; that display identifies the selection, while the
-              slot&apos;s normal enhancement or vision transform still runs
-              before generation.
+              direct Hybrid pool decision, Next action mirrors the selected
+              prompt. If that slot uses enhancement or vision, it waits and
+              displays only the final applied text.
             </li>
             <li>
               Guide <strong>Visual memory</strong> compares one previous canvas
@@ -213,7 +213,9 @@ function HelpPanel({
           </p>
           <p>
             Heatmap style is shared across modes. Size, jitter, speed, trail,
-            and event-history settings are remembered per mode.
+            and event-history settings are remembered per mode. Mode-specific
+            controls live under the Tracking cog; VLM driver prompts and Next
+            action remain directly visible when VLM is selected.
           </p>
         </section>
 
@@ -241,12 +243,13 @@ function HelpPanel({
           </p>
           <p>
             The circle inside a slot's weight field temporarily mutes that
-            prompt without changing its weight. Muted slots remain editable
-            and return to the same pool configuration when unmuted. Muted and
-            zero-weight slots are excluded from selection; generation requires
-            at least one positive, unmuted slot. Prompt text may be empty: an
-            active blank slot sends an empty string to the workflow. New prompt
-            slots start at weight 1.
+            prompt without changing its weight. A muted slot is veiled and its
+            other controls are suspended until the circle is used to unmute it.
+            It then returns to the same pool configuration. Muted and zero-weight
+            slots are excluded from selection; generation requires at least one
+            positive, unmuted slot. Prompt text may be empty: an active blank slot
+            sends an empty string to the workflow. New prompt slots start at
+            weight 1.
           </p>
           <p>
             Guide Select and Hybrid deliberately ignore numeric prompt weights.
@@ -406,9 +409,10 @@ function HelpPanel({
             Advanced contains automatic download/clear intervals, canvas
             limits, the VLM model, and WebGazer calibration-cache controls. A
             model-specific effort menu appears beside a vision model that
-            supports thinking. VLM behavior, scope, Guide prompt choice, history,
-            editable instructions, and Compose/Hybrid's next action are shown
-            below Mode when VLM is selected.
+            supports thinking. The Tracking cog contains VLM behavior, scope,
+            Guide prompt choice, and history. Editable driver instructions and
+            Compose/Hybrid's Next action remain visible below Mode when VLM is
+            selected.
           </p>
           <p>
             View controls frame zoom and visibility, fit target, pull-box

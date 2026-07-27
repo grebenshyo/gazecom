@@ -276,9 +276,35 @@ body.gz-theme-dark .gz-panel-header {
    manual ✨ enhance, auto-enhance cycle, and optional × remove button
    overlaid in the corners. */
 .gz-prompt-slot {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.gz-prompt-slot--muted::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+  opacity: 0.68;
+  backdrop-filter: grayscale(1);
+  -webkit-backdrop-filter: grayscale(1);
+  pointer-events: none;
+}
+
+/* Keep the sole recovery control above the per-slot veil. */
+.gz-prompt-slot--muted .gz-weight-input__mute {
+  position: relative;
+  z-index: 3;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gz-prompt-slot--muted .gz-prompt-slot__textarea:disabled {
+  cursor: not-allowed;
 }
 
 .gz-prompt-slot__input-wrap {
@@ -670,7 +696,7 @@ body.gz-theme-dark .gz-pool-warning {
   opacity: 0.6;
 }
 
-/* Title + optional header action (e.g. the Prompting cog) grouped on the
+/* Title + optional header action (e.g. a section settings cog) grouped on the
    left of a collapsible header; the caret stays pushed to the right by
    the header button's space-between. */
 .gz-section__title-label {
@@ -679,7 +705,7 @@ body.gz-theme-dark .gz-pool-warning {
   gap: 6px;
 }
 
-/* Small cog affordance in a section header (Prompting → prompt settings).
+/* Small cog affordance in a section header.
    Rendered as a role="button" span (not a nested <button>) that stops
    propagation, so clicking it reveals the controls without collapsing
    the section. */

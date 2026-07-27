@@ -249,11 +249,14 @@ write even when no candidates are available.
 Guide visual memory is a separate, bounded comparison aid. When enabled, the
 frontend retains the canvas observed by the previous accepted Guide decision
 and submits it before the current canvas on the next `/api/llm/decision`
-request. The user-visible memory clause is inserted into every editable Guide
-prompt when the toggle is enabled and removed when disabled. The backend adds
-no hidden instruction; it only preserves previous/current image ordering.
-Failed, aborted, stale, cleared, or reconfigured decisions do not advance the
-stored image, and only one previous `Blob` is retained.
+request. The current overview is capped at 1024px; the retained comparison copy
+is capped at 512px to reduce two-image VLM overhead while preserving aspect
+ratio and normalized coordinates. The user-visible memory clause is inserted
+into every editable Guide prompt when the toggle is enabled and removed when
+disabled. The backend adds no hidden instruction; it only preserves
+previous/current image ordering. Failed, aborted, stale, cleared, or
+reconfigured decisions do not advance the stored image, and only one previous
+`Blob` is retained.
 
 After compositing the result, the pipeline appends the applied decision to
 bounded transient chat history, then requests and stores the next decision. The

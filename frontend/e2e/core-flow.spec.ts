@@ -73,7 +73,7 @@ async function stubBackend(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ status: "ok", version: "0.3.0" }),
+      body: JSON.stringify({ status: "ok", version: "0.3.1" }),
     });
   });
   await page.route("**/api/config", async (route) => {

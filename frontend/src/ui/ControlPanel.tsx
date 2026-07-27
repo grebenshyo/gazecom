@@ -236,6 +236,12 @@ export function ControlPanel({
       ...s.sectionsExpanded,
       "prompting.settings": !promptSettingsOpen,
     });
+  const trackingSettingsOpen = s.sectionsExpanded["tracking.settings"] ?? false;
+  const toggleTrackingSettings = () =>
+    s.set("sectionsExpanded", {
+      ...s.sectionsExpanded,
+      "tracking.settings": !trackingSettingsOpen,
+    });
 
   useEffect(() => {
     setMatteColorDraft(s.matteColor);
@@ -598,16 +604,34 @@ export function ControlPanel({
     s.vlmBehavior === "guide" &&
     (s.vlmGuidePromptChoice === "compose" ||
       s.vlmGuidePromptChoice === "hybrid");
+  const selectedPoolAction =
+    s.vlmGuideAction &&
+    "promptText" in s.vlmGuideAction &&
+    typeof s.vlmGuideAction.promptText === "string"
+      ? s.vlmGuideAction
+      : null;
+  const selectedPoolSlot = selectedPoolAction
+    ? s.pinnedPrompts[selectedPoolAction.promptSlotIndex]
+    : undefined;
+  const selectedPoolHasAppliedPrompt =
+    selectedPoolAction &&
+    typeof selectedPoolAction.appliedPromptText === "string";
+  const selectedPoolAwaitingTransform = Boolean(
+    selectedPoolAction &&
+      !selectedPoolHasAppliedPrompt &&
+      (promptSlotVisionEnabled(selectedPoolSlot) ||
+        promptSlotAutoEnhanceMode(selectedPoolSlot) !== "off"),
+  );
   const nextActionText =
     s.vlmGuideAction &&
     "instruction" in s.vlmGuideAction &&
     typeof s.vlmGuideAction.instruction === "string"
       ? s.vlmGuideAction.instruction
-      : s.vlmGuideAction &&
-          "promptText" in s.vlmGuideAction &&
-          typeof s.vlmGuideAction.promptText === "string"
-        ? s.vlmGuideAction.promptText
-        : "";
+      : selectedPoolHasAppliedPrompt
+        ? selectedPoolAction.appliedPromptText
+        : selectedPoolAction && !selectedPoolAwaitingTransform
+          ? selectedPoolAction.promptText
+          : "";
   const llmModelOptions = (() => {
     const placeholder =
       llmModelsStatus === "loading" ? "Loading models..." : "Select model...";
@@ -737,6 +761,30 @@ export function ControlPanel({
         title="Tracking"
         sectionKey="tracking"
         collapsible
+        headerAction={
+          <span
+            className="gz-section__cog"
+            role="button"
+            tabIndex={0}
+            aria-label="Toggle tracking settings"
+            aria-pressed={trackingSettingsOpen}
+            title="Tracking settings"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleTrackingSettings();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleTrackingSettings();
+              }
+            }}
+          >
+            ⚙
+          </span>
+        }
         onReset={() => s.resetSection("tracking")}
       >
         <Dropdown<TrackingMode>
@@ -745,7 +793,7 @@ export function ControlPanel({
           options={TRACKING_MODE_OPTIONS}
           onChange={(v) => s.set("trackingMode", v)}
         />
-        {s.trackingMode === "vlm" && (
+        {trackingSettingsOpen && s.trackingMode === "vlm" && (
           <>
             <Dropdown<VLMBehavior>
               label="Behavior"
@@ -795,60 +843,12 @@ export function ControlPanel({
                 onChange={(v) => s.set("vlmScope", v)}
               />
             )}
-            <div className="gz-prompt-settings-textarea">
-              <label
-                className="gz-prompt-settings-textarea__label"
-                htmlFor="gz-vlm-tracking-prompt"
-              >
-                {vlmPromptConfig.label}
-              </label>
-              <textarea
-                id="gz-vlm-tracking-prompt"
-                ref={vlmPromptRef}
-                className="gz-prompt-settings-textarea__input"
-                value={vlmPromptConfig.value}
-                spellCheck={false}
-                rows={3}
-                style={{ height: s.vlmPointPromptHeight }}
-                onChange={(e) => s.set(vlmPromptConfig.key, e.target.value)}
-                onPointerUp={(e) => {
-                  const height = e.currentTarget.offsetHeight;
-                  if (height > 0) s.set("vlmPointPromptHeight", height);
-                }}
-              />
-              {s.vlmBehavior === "guide" &&
-                ((s.vlmGuidePromptChoice === "rotate" &&
-                  s.vlmRotatePoolContext) ||
-                  s.vlmGuidePromptChoice === "select" ||
-                  s.vlmGuidePromptChoice === "hybrid") &&
-                !vlmPromptConfig.value.includes("{prompt_pool}") && (
-                  <p className="gz-pool-warning">
-                    {vlmPromptConfig.label} requires the {"{prompt_pool}"}{" "}
-                    placeholder.
-                  </p>
-                )}
-              {showsNextAction && (
-                <textarea
-                  ref={vlmGuideActionRef}
-                  className="gz-prompt-slot__derived"
-                  aria-label="Next VLM action"
-                  value={nextActionText}
-                  placeholder="Next action will appear here..."
-                  readOnly
-                  rows={2}
-                  style={{ height: s.vlmGuideActionHeight }}
-                  onPointerUp={(e) => {
-                    const height = e.currentTarget.offsetHeight;
-                    if (height > 0) s.set("vlmGuideActionHeight", height);
-                  }}
-                />
-              )}
-            </div>
           </>
         )}
         {/* Speed only applies to the synthetic roamers (roam / roam2) —
             real-input trackers have no travel speed to scale. */}
-        {(s.trackingMode === "roam" || s.trackingMode === "roam2") && (
+        {trackingSettingsOpen &&
+          (s.trackingMode === "roam" || s.trackingMode === "roam2") && (
           <Slider
             label="Roam speed"
             value={s.roamSpeed}
@@ -858,7 +858,7 @@ export function ControlPanel({
             onChange={(v) => s.set("roamSpeed", v)}
           />
         )}
-        {s.trackingMode === "webgazer" && (
+        {trackingSettingsOpen && s.trackingMode === "webgazer" && (
           <Slider
             label="Event history"
             value={s.eventHistoryLength}
@@ -871,15 +871,72 @@ export function ControlPanel({
         {/* Trail length shapes the heatmap smear; applies to every
             trail-based tracker except WebGazer's event history and the
             single-point VLM mode. */}
-        {s.trackingMode !== "webgazer" && s.trackingMode !== "vlm" && (
-          <Slider
-            label="Trail length"
-            value={s.trailLength}
-            min={10}
-            max={1000}
-            step={10}
-            onChange={(v) => s.set("trailLength", v)}
-          />
+        {trackingSettingsOpen &&
+          s.trackingMode !== "webgazer" &&
+          s.trackingMode !== "vlm" && (
+            <Slider
+              label="Trail length"
+              value={s.trailLength}
+              min={10}
+              max={1000}
+              step={10}
+              onChange={(v) => s.set("trailLength", v)}
+            />
+          )}
+        {s.trackingMode === "vlm" && (
+          <div className="gz-prompt-settings-textarea">
+            <label
+              className="gz-prompt-settings-textarea__label"
+              htmlFor="gz-vlm-tracking-prompt"
+            >
+              {vlmPromptConfig.label}
+            </label>
+            <textarea
+              id="gz-vlm-tracking-prompt"
+              ref={vlmPromptRef}
+              className="gz-prompt-settings-textarea__input"
+              value={vlmPromptConfig.value}
+              spellCheck={false}
+              rows={3}
+              style={{ height: s.vlmPointPromptHeight }}
+              onChange={(e) => s.set(vlmPromptConfig.key, e.target.value)}
+              onPointerUp={(e) => {
+                const height = e.currentTarget.offsetHeight;
+                if (height > 0) s.set("vlmPointPromptHeight", height);
+              }}
+            />
+            {s.vlmBehavior === "guide" &&
+              ((s.vlmGuidePromptChoice === "rotate" &&
+                s.vlmRotatePoolContext) ||
+                s.vlmGuidePromptChoice === "select" ||
+                s.vlmGuidePromptChoice === "hybrid") &&
+              !vlmPromptConfig.value.includes("{prompt_pool}") && (
+                <p className="gz-pool-warning">
+                  {vlmPromptConfig.label} requires the {"{prompt_pool}"}{" "}
+                  placeholder.
+                </p>
+              )}
+            {showsNextAction && (
+              <textarea
+                ref={vlmGuideActionRef}
+                className="gz-prompt-slot__derived"
+                aria-label="Next VLM action"
+                value={nextActionText}
+                placeholder={
+                  selectedPoolAwaitingTransform
+                    ? "Processing selected prompt..."
+                    : "Next action will appear here..."
+                }
+                readOnly
+                rows={2}
+                style={{ height: s.vlmGuideActionHeight }}
+                onPointerUp={(e) => {
+                  const height = e.currentTarget.offsetHeight;
+                  if (height > 0) s.set("vlmGuideActionHeight", height);
+                }}
+              />
+            )}
+          </div>
         )}
       </Section>
 
@@ -1719,6 +1776,7 @@ const DEFAULT_SECTION_EXPANDED: Record<string, boolean> = {
   "prompting.settings": false,
   workflow: true,
   tracking: true,
+  "tracking.settings": false,
   settings: false,
   advanced: false,
   view: false,
@@ -1836,6 +1894,7 @@ function PromptSlotRow({
   return (
     <div
       className={`gz-prompt-slot${isActivePick ? " gz-prompt-slot--active" : ""}${muted ? " gz-prompt-slot--muted" : ""}`}
+      aria-disabled={muted || undefined}
     >
       <div className="gz-prompt-slot__input-wrap">
         <textarea
@@ -1846,7 +1905,7 @@ function PromptSlotRow({
             index === 0 ? "Enter base prompt…" : "Additional prompt slot…"
           }
           value={slot.text}
-          disabled={enhancing}
+          disabled={muted || enhancing}
           onFocus={onFocus}
           onChange={(e) => onTextChange(e.target.value)}
           style={slot.height ? { height: slot.height } : undefined}
@@ -1904,13 +1963,17 @@ function PromptSlotRow({
             type="button"
             aria-label="Enhance with LLM"
             title={
-              enhancing
+              muted
+                ? "Unmute this prompt to enhance it"
+                : enhancing
                 ? "Enhancing…"
                 : slot.text.trim() === ""
                   ? "Type something first"
                   : "Enhance with LLM"
             }
-            disabled={enhancing || anyEnhancing || slot.text.trim() === ""}
+            disabled={
+              muted || enhancing || anyEnhancing || slot.text.trim() === ""
+            }
             onClick={() => void onEnhance()}
           >
             <span aria-hidden="true">{enhancing ? "⏳" : "✨"}</span>
@@ -1920,6 +1983,7 @@ function PromptSlotRow({
             type="button"
             aria-label={`Auto-enhance mode: ${autoEnhanceMode}`}
             title={AUTO_ENHANCE_TITLES[autoEnhanceMode]}
+            disabled={muted}
             onClick={() =>
               onAutoEnhanceModeChange(
                 nextPromptAutoEnhanceMode(autoEnhanceMode),
@@ -1937,6 +2001,7 @@ function PromptSlotRow({
             title={
               visionEnabled ? VISION_BUTTON_TITLES.on : VISION_BUTTON_TITLES.off
             }
+            disabled={muted}
             onClick={() => onVisionEnabledChange(!visionEnabled)}
           >
             <span aria-hidden="true">◉</span>
@@ -1947,6 +2012,7 @@ function PromptSlotRow({
               type="button"
               aria-label="Remove slot"
               title="Remove slot"
+              disabled={muted}
               onClick={onRemove}
             >
               <span aria-hidden="true">×</span>
@@ -1961,6 +2027,7 @@ function PromptSlotRow({
           title="Last generated prompt sent from this slot"
           rows={3}
           readOnly
+          disabled={muted}
           placeholder="Generated prompt will appear here..."
           value={slot.derivedText ?? ""}
           style={

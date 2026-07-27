@@ -5,13 +5,10 @@ current tasks.
 
 ## VLM Mode
 
-- **Reduce Guide visual-memory overhead asymmetrically.** Guide currently
-  compares two canvases capped at 1024px by `captureVisionCanvas`; it does not
-  send the full native workspace dimensions. Test retaining the current canvas
-  at 1024px while reducing only the previous comparison canvas to 512px. This
-  would lower each two-image request from roughly 2.1M to 1.31M source pixels
-  while preserving current-canvas detail and normalized coordinate placement.
-  Prefer this fixed, bounded optimization before adding another UI control.
+- **Validate 512px Guide visual memory.** The trial implementation keeps the
+  current decision canvas capped at 1024px while retaining the previous
+  comparison canvas at 512px. Confirm that this materially reduces load without
+  degrading continuity or visual comparisons before treating it as settled.
 
 - **Revisit task-specific vision reasoning controls.** Prompt-slot vision and
   VLM tracking currently share the Vision model's thinking-effort setting.
@@ -56,8 +53,7 @@ current tasks.
 
 ## Packaging
 
-- **Complete release provenance metadata.** When `v0.3.0` is published, add
-  its actual release date to `CITATION.cff`. Archive the tagged GitHub release
+- **Complete release provenance metadata.** Archive a tagged GitHub release
   through Zenodo, which stores a permanent snapshot and assigns it a DOI
   (Digital Object Identifier), then add that DOI to `CITATION.cff` so the
   exact release remains permanently identifiable and citable.
