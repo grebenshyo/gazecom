@@ -15,7 +15,7 @@ gazeCOM connects to [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for
 image generation and to [Ollama](https://ollama.com/) for language and vision
 models.
 
-> Current version: v0.3.1
+> Current version: v0.3.2
 
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
