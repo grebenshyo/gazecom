@@ -188,7 +188,11 @@ function HelpPanel({
               image-editing instruction. <strong>Hybrid</strong> chooses per step
               whether to select one pool prompt without rewriting it or write its
               own complete prompt, which may adapt or combine ideas from the pool.
-              Compose and Hybrid-written prompts appear under Next action.
+              Compose and Hybrid-written prompts appear under Next action. For a
+              Hybrid pool decision, Next action instead mirrors the selected
+              pool prompt; that display identifies the selection, while the
+              slot&apos;s normal enhancement or vision transform still runs
+              before generation.
             </li>
             <li>
               Guide <strong>Visual memory</strong> compares one previous canvas
