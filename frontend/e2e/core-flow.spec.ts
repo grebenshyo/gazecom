@@ -125,6 +125,29 @@ test("welcome modal appears on first visit and closes", async ({ page }) => {
   await expect(modal).toBeHidden();
 });
 
+test("help drawer renders the repository Guide", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /close/i }).click();
+  await page.getByRole("button", { name: "Help" }).click();
+
+  const drawer = page.locator("body > aside.gz-drawer");
+  await expect(
+    drawer.getByRole("heading", { name: "gazeCOM Guide" }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Saliency sources" }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("heading", { name: "Workflow pool" }),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("link", { name: "Workflow authoring" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/grebenshyo/gazecom/blob/main/docs/WORKFLOWS.md",
+  );
+});
+
 test("control panel renders all sections", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /close/i }).click();

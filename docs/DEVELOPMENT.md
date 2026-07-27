@@ -188,40 +188,18 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 
 ## Workflows
 
-Workflow categories are a strict, deliberately small contract:
+The workflow catalog lives in `backend/gazecom/workflow_catalog.py`; frontend
+selection and weighted pooling live under `frontend/src/workflows/`. Keep the
+scanner, substitution code, tests, and user-facing contract aligned when
+changing workflow behavior.
 
-```text
-workflows/
-├── img/          base image + heatmap, or a COM crop
-├── edit/         plain image-conditioned patch, or a COM crop
-└── inpainting/   alpha-mask input for in-/outpainting
-```
+See [WORKFLOWS.md](WORKFLOWS.md) for the canonical category, input-routing,
+placeholder, validation, dependency, and override contract.
 
-Templates must be ComfyUI **API-format** JSON and live directly inside one of
-those three lowercase folders. The backend scans them on page load, groups them
-alphabetically, and reports structural errors to the workflow picker.
+## Ollama integration
 
-`{input_image}` is required and must feed the workflow's image loader. Optional
-placeholders are `{prompt}`, `{seed}` and `{output_prefix}`. A workflow
-controlled by the Steps field declares its own default in the same token, for
-example `{steps:6}`. The graph must terminate in `SaveImage` or `PreviewImage`;
-gazeCOM returns the first image from that output.
-
-Inpainting workflows receive one PNG rather than separate image and mask
-uploads, so their graph must consume the mask output of `LoadImage`. Model
-names, LoRAs, samplers, schedulers, CFG, denoise and other model-specific values
-remain owned by the workflow itself.
-
-Source development scans the repository's `workflows/` directory. Packaged
-builds additionally scan the writable per-user directory created at launch:
-
-- macOS: `~/Library/Application Support/gazeCOM/workflows/`
-- Windows: `%APPDATA%\gazeCOM\workflows\`
-- Linux: `${XDG_CONFIG_HOME:-~/.config}/gazeCOM/workflows/`
-
-Both roots share the same visible category/name key. A user workflow with the
-same key overrides the bundled workflow. Prompt enhancement and vision call
-Ollama directly through `/api/llm/*`; they do not use ComfyUI workflows.
+Prompt enhancement and vision call Ollama directly through `/api/llm/*`; they
+do not use ComfyUI workflows.
 Installed Ollama tags populate both model menus, but selections begin blank and
 remain explicit. Missing selections and unavailable models fail visibly rather
 than falling back to another installed model. The frontend exposes independent,
@@ -229,6 +207,8 @@ model-specific effort controls only when the selected model advertises the
 `thinking` capability. Generic thinking families use Ollama's boolean Off / On
 values, GPT-OSS uses Low / Medium / High, and Gemma 4 also exposes Max. The
 selected value is sent explicitly with every relevant request.
+
+## VLM Guide orchestration
 
 VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
 requests a structured canvas decision and moves Pull there. Rotate resolves text
@@ -264,8 +244,10 @@ backend reconstructs Ollama `messages` from coordinates for Rotate, coordinates
 plus applied prompts for Select, coordinates plus instructions for Compose, and
 source plus final applied prompt for Hybrid, attaching only the latest canvas
 image.
+
 `vlmGuideHistoryLimit` controls the retained decision count (20 by default, 0
 disables history).
+
 Bounded mode allocates the configured workspace once and centers existing
 content; unbounded mode sends the current composite so edge Pulls can expand it.
 Pending decisions, history, and workspace readiness are transient, while the

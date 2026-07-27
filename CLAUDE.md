@@ -146,5 +146,5 @@ src/
 - Adding a new heatmap style: edit `canvas/Heatmap.ts`
   (`heatmapStyles`) and add the option to `ControlPanel.tsx`.
 - Adding a workflow: place an API-format JSON directly in `img/`, `edit/`,
-  or `inpainting/`, follow the placeholder contract in `docs/DEVELOPMENT.md`,
+  or `inpainting/`, follow the placeholder contract in `docs/WORKFLOWS.md`,
   and let the catalog scanner validate it.

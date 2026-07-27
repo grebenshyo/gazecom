@@ -1,250 +1,217 @@
 # gazeCOM
 
-gazeCOM translates **saliency patterns** — gaze movements, hand gestures,
-computer vision, cursor input, or algorithmic walks — into spatial controls
-for iterative image generation and composition across an infinite canvas.
+gazeCOM is a local React/TypeScript application for tracking-driven image
+generation and spatial composition. It uses spatial data produced by different
+tracking modes to define the region processed by the image model and where the
+result is anchored on a composite canvas.
 
-Each source is rendered as a saliency heatmap and reduced to a **center of mass
-(COM)**. That coordinate selects the region passed to the generation model,
-can shape an inpainting mask, and determines where each result is placed on a
-persistent composite. Sources remain interchangeable because they all produce
-the same spatial signal.
+Tracking is organized around two drivers:
 
-Runs locally against your own [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
-for image generation, with optional language and vision steps through
-[Ollama](https://ollama.com/).
+- **Interactive modes** build temporal saliency from gaze movements, hand
+  gestures, cursor input, camera-based computer vision, or algorithmic
+  movement.
+- **VLM** derives saliency from a vision model's analysis of the image or
+  composite.
 
-> Current version: v0.3.1. First published as v0.2.0; evolved from a 2025 prototype.
+gazeCOM connects to [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for
+image generation and to [Ollama](https://ollama.com/) for language and vision
+models.
 
-![gazeCOM interface panels for prompting, workflows, saliency settings, and advanced controls](assets/gazecom-panels.jpg)
+> Current version: v0.3.1
 
-## What you need
+![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
-- A running **ComfyUI** reachable over HTTP — run it however you like
-  (Desktop app, portable, manual, remote). gazeCOM talks to it purely over
-  the ComfyUI API, so it doesn't care where or how it runs; it only needs the
-  address. If ComfyUI is on another machine, start it with `--listen`.
-- Optional: a running **Ollama** for prompt enhancement, image description,
-  and the VLM tracking mode (default `127.0.0.1:11434`).
+[How it works](#how-it-works) · [Install](#install) ·
+[Technical overview](#technical-overview) · [Quick start](#quick-start) ·
+[Settings and data](#settings-and-data) · [Documentation](#documentation) ·
+[Build from source](#build-from-source)
 
-No shared folders or paths to wire up — you point gazeCOM at those addresses
-from the in-app **Settings** drawer.
+## How it works
 
-## Get the app
+1. The selected driver supplies one or more saliency points.
+2. The points accumulate into a saliency heatmap.
+3. Their weighted spatial distribution determines the center of mass (COM),
+   which becomes the driving coordinate.
+4. A 1024 x 1024 region centered on COM is submitted to ComfyUI.
+5. The generated patch is placed at the corresponding canvas position.
+6. Iterative mode repeats the pipeline from the updated state.
 
-### Download a build
+The composite operates on an infinite canvas with optional width and height
+limits.
 
-Grab the latest **[Release](https://github.com/grebenshyo/gazecom/releases)**
-and unzip. gazeCOM runs in a terminal window that shows its address and logs —
-the same shape as ComfyUI and Ollama.
+> **Tip:** **Pull** is a separate canvas control that extracts the currently
+> positioned 1024 x 1024 frame from the composite as the next working image.
 
-- **Windows** — double-click `gazeCOM.exe` inside the unzipped `gazeCOM`
-  folder. A console window opens.
-- **macOS** — download `gazeCOM-macos-arm64.zip` for Apple Silicon or
-  `gazeCOM-macos-intel.zip` for an Intel Mac, then double-click
-  `gazeCOM.command` inside the folder. It opens in Terminal. (First time,
-  it's unsigned: right-click → **Open**.)
+## Install
 
-Until a release is tagged, builds are also attached to each run of the
-**Release Build** workflow under the repo's **Actions** tab.
+Download and extract the latest build from
+[Releases](https://github.com/grebenshyo/gazecom/releases).
 
-### …or build it yourself
+- **Windows:** run `gazeCOM.exe`.
+- **Apple Silicon:** download `gazeCOM-macos-arm64.zip` and open
+  `gazeCOM.command`.
+- **Intel macOS:** download `gazeCOM-macos-intel.zip` and open
+  `gazeCOM.command`.
 
-One command (needs Python 3.11+, Node 20+, and [pnpm](https://pnpm.io)):
+The application starts a local server in a terminal window and opens gazeCOM in
+the browser. Close the terminal or press **Ctrl-C** to stop it.
 
-```powershell
-# Windows (PowerShell)
-scripts\build-app.ps1
-```
+The builds are unsigned. On Windows, choose **More info > Run anyway** if
+SmartScreen appears. On macOS, right-click `gazeCOM.command` and choose
+**Open** on first launch. If macOS still blocks it, open **System Settings >
+Privacy & Security** and choose **Open Anyway**.
 
-```bash
-# macOS / Linux
-scripts/build-app.sh
-```
-
-It builds the frontend, freezes the app, and prints where it landed:
-`dist\gazeCOM\` (Windows) or `dist/gazeCOM/` with a `gazeCOM.command` inside
-(macOS).
-
-## Run
-
-Launch it (see above). A terminal window opens showing the address, and your
-browser opens to gazeCOM. Then:
-
-- Open the **Settings** drawer and set your **ComfyUI** host (and optional
-  **Ollama** host). That's the only setup.
-- Open the **?** drawer for the built-in Guide covering setup, tracking modes,
-  prompting, workflows, generation, canvas controls, and settings.
-- **To quit**, close the terminal window or press **Ctrl-C** in it. That stops
-  the local server; the browser tab is then just a stale page you can close.
-- Relaunching while it's already running reopens the same window instead of
-  starting a second server.
-- **First launch is unsigned**: Windows SmartScreen → *More info → Run anyway*;
-  macOS → right-click `gazeCOM.command` → *Open* (the launcher then clears the
-  download quarantine so the app itself starts without a second prompt).
-
-## Saliency sources
-
-| Mode | Calibration | Camera | What it does |
-|---|---|---|---|
-| WebGazer | Yes (5-point) | Yes | Estimates gaze movements from a webcam |
-| Handpose | No | Yes | Translates five tracked fingertips into saliency points |
-| Cursor | No | No | Uses pointer movement as the spatial signal |
-| MSI | No | Yes | Computes a computer-vision saliency map from the camera |
-| Roam | No | No | Produces a momentum-based algorithmic walk |
-| Adaptive Roam | No | No | Alternates between exploratory, focused, and scanning patterns |
-| VLM | No | No | Uses a vision model to locate saliency, guide Pull, or choose the next canvas edit |
-
-Every source uses the same generation and composition pipeline, so modes can be
-switched without changing the selected workflow. Most sources feed the saliency
-heatmap and COM; canvas-scoped VLM tracking selects the next Pull frame directly.
-VLM Guide evaluates the complete canvas and steers that frame. Its four prompt
-strategies can rotate through the weighted pool, select the authored prompt best
-suited to the chosen area, compose a new instruction, or choose between selecting
-and composing for each step.
-
-Camera processing stays in the browser; gazeCOM does not upload webcam video.
-Camera-based modes require permission, and some tracker scripts/models are
-loaded from their upstream CDNs when first selected. See
-**[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)** for sources and licenses.
-
-## Generation
-
-- **Standard** (img2img): heatmap + base image → transformation.
-- **Edit**: image-conditioned editing of the current patch.
-- **In-/outpainting**: the heatmap masks regions for selective regeneration
-  or edge expansion.
-- **COM** (independent toggle): when on, the saliency center of mass drives
-  crop selection and where each patch lands on the composite.
-- **Composite**: results accumulate as spatially-placed patches on an
-  unbounded or size-limited canvas.
-- **Iterative**: repeats generation on a configurable delay, with optional
-  feedback between passes.
-
-Prompts and ComfyUI workflows each live in independent **weighted pools**, so a
-run can use one fixed choice or rotate probabilistically. Prompt slots can be
-sent directly, rewritten by a local LLM (once or self-evolving), or produced
-from the current frame by a vision model. Pinned workflows and prompt slots can
-be muted without changing their weights, then unmuted to restore the same pool
-configuration. Workflow and prompt values are relative weights and are
-normalized automatically; neither pool needs to total 100. Muted and
-zero-weight entries are excluded before normalization, and generation requires
-at least one positive, unmuted entry in each pool. Guide **Select** and
-**Hybrid** ignore numeric prompt weights and expose every unmuted slot to the
-VLM; the weight fields are hidden without changing their stored values.
-Rotate can optionally expose its positive, unmuted slots and normalized
-probabilities as placement context without giving the VLM control over prompt
-selection. **Compose** replaces the prompt pool with a new VLM instruction.
-Hybrid can either use one exposed slot or write a complete instruction of its own.
-Prompt text itself may be empty; an active blank slot sends an empty string to
-the selected workflow rather than inserting a fallback prompt.
-Prompt slots and new workflow pins start at weight `1`. The first workflow pin
-populates **Steps** from its authored `{steps:N}` default, while workflows
-without that placeholder leave the field blank.
-
-### Prompting and models
-
-The **Prompting** cog exposes built-in prompt lists and templates. A chosen
-template is written into the currently focused slot; placeholders such as
-`{cartoon character}`, `{tree part}`, `{support}`, `{color}`, and `{artist}`
-are randomized when that slot is sent. The same panel contains the editable
-LLM wrapper, where `{prompt}` marks the insertion point.
-
-Ollama model selection is explicit: fresh installations select nothing, and a
-removed model returns the relevant menu to blank instead of silently choosing
-another. Choose the text model under the Prompting cog and the vision model
-under **Advanced**. Models that report Ollama's thinking capability also expose
-an effort menu containing only the modes accepted by the selected model
-(boolean-thinking models use **Off / On**, GPT-OSS uses
-**Low / Medium / High**, and Gemma 4 also exposes **Max**). Text and vision
-choices are independent and are included in settings export/import. The
-sparkle button runs the selected tool once; automatic
-prompting cycles between off (`○`), send
-without replacing the slot (`↗`), and self-evolving replacement (`↻`). The
-per-slot vision button describes the current frame before generation and
-displays the returned prompt separately.
-The **Tracking** cog contains the active mode's controls. VLM has two behaviors:
-**Point** locates saliency in either the latest generated frame or the complete
-composite; Canvas scope centers Pull on the returned coordinate. **Guide**
-always evaluates the complete canvas and returns the next Pull coordinate, with
-four choices for the generation text. VLM driver instructions and Next action
-remain visible below Mode when the cog is closed:
-
-- **Rotate** pairs the coordinate with the normal weighted prompt rotation. Its
-  optional **Pool context** toggle adds a visible, editable `{prompt_pool}`
-  block to the Guide prompt. The placeholder expands to the active prompts and
-  normalized probabilities while Guide still returns coordinates only.
-- **Select** presents every unmuted slot through the editable Select prompt's
-  `{prompt_pool}` placeholder and requires a valid prompt ID with the coordinate.
-- **Compose** returns both the coordinate and a newly authored generation
-  instruction, shown under **Next action** and passed directly to the workflow.
-- **Hybrid** either selects one pool prompt without rewriting it or writes a
-  complete prompt. Its editable instruction explicitly allows new writing to
-  adapt, combine, or expand pool concepts when that better suits the canvas.
-
-Guide's optional **Visual memory** toggle keeps exactly one previous canvas and
-sends it before the current canvas on the next decision. Enabling it adds a
-visible, editable explanation to every Guide prompt; no visual-history
-instruction is hidden in the backend. Text history remains independently
-bounded by **History**, while image memory never accumulates beyond two canvases
-per request.
-
-Selected pool slots still follow their normal direct, enhancement, evolution, or
-vision path. With canvas limits enabled, Guide prepares the complete bounded
-workspace before its first decision and centers any existing input inside it.
-Without limits, it evaluates the current composite; selecting an edge lets the
-next 1024 × 1024 crop expand the canvas. Guide can begin from an input image or
-an empty canvas and makes its first decision before the first generation.
-After each successful patch, Rotate retains previous coordinates, Select retains
-coordinates plus the prompts actually applied, Compose retains its authored
-instructions, and Hybrid retains its source and final applied prompt. All use
-bounded Ollama chat history and submit only the latest canvas image. The
-behavior-specific
-**history** control sets how many decisions remain (20 by default; 0 disables
-continuity). Pausing tracking keeps that conversation; clearing or replacing the
-canvas, changing the relevant prompt/model/behavior/history, or changing canvas
-limits starts a new one. Point and all four Guide instructions are editable and
-saved separately.
-
-### Settings and portability
-
-The `↺` control in each panel heading restores only that section to its
-fresh-install state. The global **Settings** drawer is organized into three
-sections:
-
-- **General** configures the ComfyUI and Ollama hosts, Ollama model retention,
-  provider-error behavior, and whether the welcome screen appears at startup.
-- **Interface** controls UI scale and optional automatic collapse of other
-  panel sections when one is opened. Frame zoom is under **View** in the panel.
-- **Settings file** exports browser-persisted preferences as a versioned JSON
-  file or imports them on another installation. This includes prompt slots,
-  workflow pins, model choices, tracking profiles, and UI preferences.
-
-Service addresses, workflow files, images, API keys, canvases, and WebGazer
-calibration data remain machine-local and are not included in settings files.
-
-### Custom workflows
-
-gazeCOM groups ComfyUI API-format workflows into `img`, `edit`, and
-`inpainting`. Downloaded builds create a writable workflow folder on first
-launch:
+Custom workflows are loaded from:
 
 - macOS: `~/Library/Application Support/gazeCOM/workflows/`
 - Windows: `%APPDATA%\gazeCOM\workflows\`
 
-Place a workflow directly inside the matching category folder and reload the
-page. User workflows are merged with the bundled catalog; a user file with the
-same category and filename overrides the bundled version. The complete
-workflow contract and validation rules are documented in
-**[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#workflows)**.
+### Requirements
 
-## Development
+| Service | Used for |
+|---|---|
+| **ComfyUI** | Image generation; required and reachable over HTTP |
+| **Ollama** | VLM, prompt enhancement, and vision prompting; optional |
 
-Building from source, the architecture, the dev-vs-packaged model, the dev
-servers, and the test suites are documented in
-**[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+gazeCOM includes an API-format Edit workflow for **FLUX.2 Klein 9B INT8
+ConvRot**. It expects the following model files in ComfyUI:
+
+- Diffusion model: `FLUX.2-Klein-9B-INT8-ConvRot.safetensors`
+- Text encoder: `qwen_3_8b_fp8mixed.safetensors`
+- VAE: `flux2-vae.safetensors`
+
+The models and nodes referenced by any additional or override workflow must
+also be available in ComfyUI.
+
+ComfyUI and Ollama may run locally or on the network. Service addresses are
+configured under **Settings > General**.
+
+> **Remote ComfyUI:** start the server with `--listen`.
+
+## Technical overview
+
+### Interactive driver
+
+The Interactive driver includes six tracking modes:
+
+| Mode | Tracking signal |
+|---|---|
+| **WebGazer** | Webcam-based gaze estimation after five-point calibration |
+| **Handpose** | Five fingertip positions detected from the camera |
+| **Cursor** | Pointer movement within the tracking frame |
+| **MSI** | Computer-vision saliency inferred from the camera |
+| **Roam** | Continuous algorithmic roaming |
+| **Adaptive Roam** | An alternative roamer that alternates exploratory, focused, and scanning movement |
+
+### VLM driver
+
+The VLM driver derives spatial tracking from a vision model's analysis.
+
+It provides two behaviors:
+
+| Behavior | Function |
+|---|---|
+| **Point** | Tracks a VLM-derived saliency point in the latest frame or complete composite; the regular weighted prompt pool supplies the generation text |
+| **Guide** | Uses the vision model to define COM framing across the complete composite and applies the selected prompt strategy |
+
+Guide provides four prompt strategies:
+
+| Strategy | Function |
+|---|---|
+| **Rotate** | Rotates prompts by normalized weight; optional pool context shows the VLM which prompts are shaping the image |
+| **Select** | Lets the VLM choose one unmuted prompt from the pool, independent of weight |
+| **Compose** | Lets the VLM write a new generation prompt |
+| **Hybrid** | Lets the VLM choose between a pool prompt and a newly written prompt |
+
+Guide can retain a bounded text history of previous decisions. Optional visual
+memory sends the immediately preceding canvas alongside the current canvas.
+
+### Prompting
+
+Prompt slots form a normalized weighted pool. Entries can be muted without
+changing their values.
+
+Each prompt slot has three independent controls:
+
+| Control | States and function |
+|---|---|
+| **Auto-enhance cycle** | **Direct (`○`)** sends the authored text unchanged; **Send (`↗`)** enhances it without replacing the slot; **Evolve (`↻`)** enhances it and writes the result back |
+| **Enhance (`✨`)** | Runs the selected language or vision tool once |
+| **Vision (`◉`)** | Toggles use of the slot as an instruction for deriving generation text from the current frame |
+
+### Workflows
+
+Workflow entries form an independent normalized weighted pool. gazeCOM
+classifies them into three image-processing types:
+**image-to-image** (IMG), **image editing** (Edit), and
+**in-/outpainting** (In-/outpaint). Edit is the default mode; IMG and
+In-/outpaint are retained as legacy workflow types.
+
+| Type | COM off | COM on |
+|---|---|---|
+| **IMG** | Base image with the heatmap visibly overlaid | Opaque composite crop centered on COM |
+| **Edit** | Plain base image | Opaque composite crop centered on COM |
+| **In-/outpaint** | Base image with a heatmap-derived alpha mask | COM crop with a heatmap-derived alpha mask |
+
+The input contracts and workflow placeholders are documented in
+[Workflows](docs/WORKFLOWS.md).
+
+Downloaded builds load user workflows from:
+
+- macOS: `~/Library/Application Support/gazeCOM/workflows/`
+- Windows: `%APPDATA%\gazeCOM\workflows\`
+
+A user workflow with the same category and filename as a bundled workflow
+overrides the bundled file.
+
+## Quick start
+
+1. Open **Settings** and enter the ComfyUI host.
+2. Enter the Ollama host when using VLM or language features.
+3. Pin an Edit workflow.
+4. Select an input image or use the blank canvas.
+5. Choose an Interactive mode or VLM under **Tracking**.
+6. Start tracking and generate.
+7. Enable **Iterative** for automatic repetition.
+
+See the included [Guide](docs/GUIDE.md) for complete operating instructions.
+The same guide is available inside gazeCOM through the **?** button.
+
+## Settings and data
+
+Section reset controls restore fresh-install values. The Settings drawer
+supports versioned import and export of browser-persisted preferences. Service
+addresses, workflows, images, API keys, canvases, and WebGazer calibration data
+remain machine-local.
+
+Camera frames are processed in the browser and are not sent to the gazeCOM
+backend. Some tracking libraries and models are loaded from their upstream
+CDNs.
+
+## Documentation
+
+- [Guide](docs/GUIDE.md): Interactive modes, VLM, prompting, generation,
+  canvas controls, and settings.
+- [Workflows](docs/WORKFLOWS.md): workflow inputs, placeholders, validation,
+  and overrides.
+- [Development](docs/DEVELOPMENT.md): architecture, source setup, testing, and
+  packaging.
+
+## Build from source
+
+Requires Python 3.11+, Node 20+, and pnpm:
+
+```powershell
+scripts\build-app.ps1
+```
+
+```bash
+scripts/build-app.sh
+```
+
+The packaged application is written to `dist/gazeCOM/`.
 
 ## License
 
 MIT. Bundled artworks and runtime-loaded components retain their respective
-terms; see **[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)**.
+terms; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

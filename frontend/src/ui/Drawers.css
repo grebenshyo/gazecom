@@ -100,7 +100,16 @@
   gap: 0;
 }
 
-.gz-guide-intro {
+.gz-guide-header h1 {
+  margin: 0 0 8px;
+  color: var(--text-color);
+  font-size: 1.2em;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+}
+
+.gz-guide-header p {
   color: var(--text-color);
   font-size: 1.02em;
   line-height: 1.5;
@@ -145,17 +154,17 @@
   text-underline-offset: 2px;
 }
 
-.gz-guide-section {
+.gz-guide-markdown {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.gz-guide-markdown h2 {
+  margin: 0;
   padding: 14px 0;
   border-top: 1px solid var(--border-color);
   scroll-margin-top: 8px;
-}
-
-.gz-guide-section h4 {
-  margin: 0;
   color: var(--button-bg);
   font-size: 0.9em;
   font-weight: 700;
@@ -163,19 +172,43 @@
   text-transform: uppercase;
 }
 
-.gz-guide-section code {
+.gz-guide-markdown h2:not(:first-child) {
+  margin-top: 6px;
+}
+
+.gz-guide-markdown code {
   color: var(--text-color);
   font-size: 0.92em;
   overflow-wrap: anywhere;
 }
 
-.gz-guide-symbols strong {
-  display: inline-block;
-  min-width: 56px;
+.gz-guide-markdown a {
+  color: var(--button-bg);
+  font-weight: 600;
+  text-underline-offset: 2px;
 }
 
-.gz-guide-note {
-  margin-top: 2px;
+.gz-guide-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+
+.gz-guide-markdown th,
+.gz-guide-markdown td {
+  padding: 5px 6px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+
+.gz-guide-markdown th {
+  background: var(--dropdown-bg);
+  color: var(--text-color);
+}
+
+.gz-guide-markdown blockquote {
+  margin: 2px 0 0;
   padding: 10px 11px;
   border-left: 3px solid var(--button-bg);
   background: var(--dropdown-bg);
@@ -183,13 +216,24 @@
   line-height: 1.45;
 }
 
-.gz-guide-path {
-  display: block;
-  margin-top: 5px;
+.gz-guide-markdown blockquote > :first-child {
+  margin-top: 0;
 }
 
-.gz-guide-path:last-of-type {
-  margin-bottom: 7px;
+.gz-guide-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.gz-guide-markdown pre {
+  margin: 2px 0 0;
+  padding: 9px 10px;
+  overflow-x: auto;
+  border-radius: 3px;
+  background: var(--dropdown-bg);
+}
+
+.gz-guide-markdown pre code {
+  white-space: pre;
 }
 
 /* Labelled text field (ComfyUI host). */
