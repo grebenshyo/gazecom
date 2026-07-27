@@ -19,23 +19,10 @@ models.
 
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
-[Quick start](#quick-start) · [Install](#install) ·
+[Install](#install) · [Quick start](#quick-start) ·
 [How it works](#how-it-works) · [Technical overview](#technical-overview) ·
 [Settings and data](#settings-and-data) · [Documentation](#documentation) ·
 [Build from source](#build-from-source)
-
-## Quick start
-
-1. Open **Settings** and enter the ComfyUI host.
-2. Enter the Ollama host when using VLM or language features.
-3. Pin an Edit workflow.
-4. Select an input image or use the blank canvas.
-5. Choose an Interactive mode or VLM under **Tracking**.
-6. Start tracking and generate.
-7. Enable **Iterative** for automatic repetition.
-
-See the included [Guide](docs/GUIDE.md) for complete operating instructions.
-The same guide is available inside gazeCOM through the **?** button.
 
 ## Install
 
@@ -82,6 +69,19 @@ ComfyUI and Ollama may run locally or on the network. Service addresses are
 configured under **Settings > General**.
 
 > **Remote ComfyUI:** start the server with `--listen`.
+
+## Quick start
+
+1. Open **Settings** and enter the ComfyUI host.
+2. Enter the Ollama host when using VLM or language features.
+3. Pin an Edit workflow.
+4. Select an input image or use the blank canvas.
+5. Choose an Interactive mode or VLM under **Tracking**.
+6. Start tracking and generate.
+7. Enable **Iterative** for automatic repetition.
+
+See the included [Guide](docs/GUIDE.md) for complete operating instructions.
+The same guide is available inside gazeCOM through the **?** button.
 
 ## How it works
 
