@@ -14,6 +14,7 @@ abstract: >-
 authors:
   - name: "grebenshyo"
 version: "0.3.0"
+date-released: 2026-07-27
 type: software
 license: MIT
 repository-code: "https://github.com/grebenshyo/gazecom"
