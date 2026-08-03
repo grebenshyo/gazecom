@@ -248,9 +248,13 @@ image.
 `vlmGuideHistoryLimit` controls the retained decision count (20 by default, 0
 disables history).
 
-Bounded mode allocates the configured workspace once and centers existing
-content; unbounded mode sends the current composite so edge Pulls can expand it.
-Pending decisions, history, and workspace readiness are transient, while the
+Canvas limits share three policies across every driver. Prepare allocates the
+configured workspace once and centers existing content. Growth treats the
+dimensions as maximum size while allowing directional expansion. Centered
+tracks a fixed clipping rectangle around `firstPatchPosition`, translating that
+anchor through every composite coordinate shift. All policies retain natural
+COM placement and clip overflow instead of sliding patches inward. Pending
+decisions, history, and prepared-workspace readiness are transient, while the
 editable Point, Rotate, Select, Compose, and Hybrid instruction templates and
 Rotate's Pool context and Guide visual-memory settings persist independently.
 

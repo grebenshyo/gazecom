@@ -2,10 +2,58 @@ import { describe, expect, it } from "vitest";
 
 import {
   clampCOMToBounds,
+  deriveCanvasCOMBounds,
+  deriveCenteredCompositeBounds,
   deriveCOMBounds,
   deriveCompositeMaxSize,
   deriveRoamConstraint,
 } from "./CompositeBounds";
+
+describe("deriveCenteredCompositeBounds", () => {
+  it("centers a fixed window on the tracked first patch", () => {
+    expect(
+      deriveCenteredCompositeBounds(
+        { enabled: true, width: 2048, height: 1536 },
+        { x: 256, y: 128, width: 1024, height: 1024 },
+      ),
+    ).toEqual({ x: -256, y: -128, width: 2048, height: 1536 });
+  });
+
+  it("follows the first patch after a composite coordinate shift", () => {
+    expect(
+      deriveCenteredCompositeBounds(
+        { enabled: true, width: 2048, height: 2048 },
+        { x: 512, y: 512, width: 1024, height: 1024 },
+      ),
+    ).toEqual({ x: 0, y: 0, width: 2048, height: 2048 });
+  });
+});
+
+describe("deriveCanvasCOMBounds", () => {
+  it("uses dynamic growth bounds for Prepare and Growth", () => {
+    for (const behavior of ["prepare", "growth"] as const) {
+      expect(
+        deriveCanvasCOMBounds({
+          config: { enabled: true, width: 2048, height: 2048 },
+          behavior,
+          compositeSize: { width: 1024, height: 1024 },
+          firstPatch: { x: 0, y: 0, width: 1024, height: 1024 },
+        }),
+      ).toEqual({ x: -1024, y: -1024, width: 3072, height: 3072 });
+    }
+  });
+
+  it("uses the fixed first-patch window for Centered", () => {
+    expect(
+      deriveCanvasCOMBounds({
+        config: { enabled: true, width: 2048, height: 2048 },
+        behavior: "centered",
+        compositeSize: { width: 1024, height: 1024 },
+        firstPatch: { x: 0, y: 0, width: 1024, height: 1024 },
+      }),
+    ).toEqual({ x: -512, y: -512, width: 2048, height: 2048 });
+  });
+});
 
 describe("deriveCompositeMaxSize", () => {
   it("returns the enabled positive size cap", () => {

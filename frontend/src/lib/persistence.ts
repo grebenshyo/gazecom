@@ -25,6 +25,7 @@ export const StorageKeys = {
   frameZoom: "gazecom.frameZoom",
   autoCollapsePanels: "gazecom.autoCollapsePanels",
   boundsEnabled: "gazecom.boundsEnabled",
+  boundsBehavior: "gazecom.boundsBehavior",
   boundsWidth: "gazecom.boundsWidth",
   boundsHeight: "gazecom.boundsHeight",
   skipProviderErrors: "gazecom.skipProviderErrors",
@@ -244,6 +245,8 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
       return value === null || isFiniteNumber(value);
     case "compositeFitTarget":
       return isOneOf(value, ["patch", "composite"]);
+    case "boundsBehavior":
+      return isOneOf(value, ["prepare", "growth", "centered"]);
     case "pinnedWorkflows":
       return isNumberRecord(value);
     case "mutedWorkflows":

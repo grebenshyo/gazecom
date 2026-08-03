@@ -47,6 +47,25 @@ describe("useStore — actions", () => {
     expect(useStore.getState().steps).toBe(30);
   });
 
+  it("starts with Prepare and resets bounded canvas context when it changes", async () => {
+    const { useStore } = await import("./index");
+    expect(useStore.getState().boundsBehavior).toBe("prepare");
+    useStore.getState().patch({
+      boundsWorkspaceReady: true,
+      vlmGuideAction: { x: 0.4, y: 0.6 },
+      vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
+    });
+
+    useStore.getState().set("boundsBehavior", "centered");
+
+    expect(useStore.getState()).toMatchObject({
+      boundsBehavior: "centered",
+      boundsWorkspaceReady: false,
+      vlmGuideAction: null,
+      vlmGuideHistory: [],
+    });
+  });
+
   it("clears transient canvas decisions when VLM behavior changes", async () => {
     const { useStore } = await import("./index");
     useStore.getState().patch({
@@ -54,7 +73,7 @@ describe("useStore — actions", () => {
       vlmGuideHistory: [
         { x: 0.5, y: 0.5 },
       ],
-      vlmGuideWorkspaceReady: true,
+      boundsWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmBehavior", "guide");
@@ -63,7 +82,7 @@ describe("useStore — actions", () => {
       vlmBehavior: "guide",
       vlmGuideAction: null,
       vlmGuideHistory: [],
-      vlmGuideWorkspaceReady: false,
+      boundsWorkspaceReady: true,
     });
   });
 
@@ -73,7 +92,7 @@ describe("useStore — actions", () => {
       vlmBehavior: "guide",
       vlmGuideAction: { x: 0.4, y: 0.6 },
       vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
-      vlmGuideWorkspaceReady: true,
+      boundsWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmGuidePromptChoice", "select");
@@ -82,7 +101,7 @@ describe("useStore — actions", () => {
       vlmGuidePromptChoice: "select",
       vlmGuideAction: null,
       vlmGuideHistory: [],
-      vlmGuideWorkspaceReady: false,
+      boundsWorkspaceReady: true,
     });
   });
 
@@ -95,7 +114,7 @@ describe("useStore — actions", () => {
     useStore.getState().patch({
       vlmGuideAction: { x: 0.4, y: 0.6 },
       vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
-      vlmGuideWorkspaceReady: true,
+      boundsWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmRotatePoolContext", true);
@@ -106,7 +125,7 @@ describe("useStore — actions", () => {
         `${VLM_ROTATE_POOL_CONTEXT_BLOCK}\n\n${DEFAULT_VLM_GUIDE_PROMPT}`,
       vlmGuideAction: null,
       vlmGuideHistory: [],
-      vlmGuideWorkspaceReady: false,
+      boundsWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmRotatePoolContext", false);
@@ -131,7 +150,7 @@ describe("useStore — actions", () => {
       vlmGuidePreviousCanvas: previous,
       vlmGuideAction: { x: 0.4, y: 0.6 },
       vlmGuideHistory: [{ x: 0.2, y: 0.8 }],
-      vlmGuideWorkspaceReady: true,
+      boundsWorkspaceReady: true,
     });
 
     useStore.getState().set("vlmGuideVisualMemory", true);
@@ -141,7 +160,7 @@ describe("useStore — actions", () => {
       vlmGuidePreviousCanvas: null,
       vlmGuideAction: null,
       vlmGuideHistory: [],
-      vlmGuideWorkspaceReady: false,
+      boundsWorkspaceReady: true,
       vlmGuidePrompt:
         `${VLM_GUIDE_VISUAL_MEMORY_BLOCK}\n\n${DEFAULT_VLM_GUIDE_PROMPT}`,
       vlmSelectPrompt:
@@ -373,6 +392,7 @@ describe("useStore — actions", () => {
       steps: 42,
       compositeMatteEnabled: true,
       boundsEnabled: true,
+      boundsBehavior: "centered",
       boundsWidth: 4096,
       vlmModel: "vision-model",
       vlmThinkingMode: "low",
@@ -387,6 +407,7 @@ describe("useStore — actions", () => {
       steps: null,
       compositeMatteEnabled: true,
       boundsEnabled: false,
+      boundsBehavior: "prepare",
       boundsWidth: 2048,
       vlmModel: "",
       vlmThinkingMode: "off",
@@ -544,6 +565,7 @@ describe("useStore — persistence", () => {
       '"Choose or write from {prompt_pool}."',
     );
     localStorage.setItem(StorageKeys.vlmGuideActionHeight, "96");
+    localStorage.setItem(StorageKeys.boundsBehavior, '"centered"');
     localStorage.setItem(StorageKeys.llmEnhancePrompt, '"custom {prompt}"');
     localStorage.setItem(StorageKeys.compositeMatteEnabled, "true");
     localStorage.setItem(StorageKeys.heatmapMatteEnabled, "true");
@@ -576,6 +598,7 @@ describe("useStore — persistence", () => {
       "Choose or write from {prompt_pool}.",
     );
     expect(useStore.getState().vlmGuideActionHeight).toBe(96);
+    expect(useStore.getState().boundsBehavior).toBe("centered");
     expect(useStore.getState().llmEnhancePrompt).toBe("custom {prompt}");
     expect(useStore.getState().compositeMatteEnabled).toBe(true);
     expect(useStore.getState().heatmapMatteEnabled).toBe(true);

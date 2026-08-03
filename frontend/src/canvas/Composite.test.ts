@@ -389,3 +389,40 @@ describe("planComposite — patch placed inside existing canvas (no growth)", ()
     expect(plan.coordinateShift).toEqual({ x: 0, y: 0 });
   });
 });
+
+describe("planComposite — centered clipping window", () => {
+  it("grows toward an unused side of the fixed window", () => {
+    const plan = planComposite(
+      baseInput({
+        useCOM: true,
+        newCOM: { x: 0, y: 0.5 },
+        bounds: { x: -512, y: -512, width: 2048, height: 2048 },
+      }),
+    );
+
+    expect(plan.canvasSize).toEqual({ width: 1536, height: 1024 });
+    expect(plan.coordinateShift).toEqual({ x: 512, y: 0 });
+    expect(plan.newDrawAt).toEqual({ x: 0, y: 0 });
+  });
+
+  it("clips overflow at the fixed edge without sliding the patch inward", () => {
+    const plan = planComposite({
+      prevSize: { width: 1536, height: 1024 },
+      prevPosition: { x: 512, y: 0, width: 1024, height: 1024 },
+      newSize: { width: 1024, height: 1024 },
+      newCOM: { x: 1, y: 0.5 },
+      workflow: "edit",
+      useCOM: true,
+      bounds: { x: -512, y: -512, width: 2048, height: 2048 },
+    });
+
+    expect(plan.canvasSize).toEqual({ width: 1536, height: 1024 });
+    expect(plan.newDrawAt).toEqual({ x: 1024, y: 0 });
+    expect(plan.newPosition).toEqual({
+      x: 1024,
+      y: 0,
+      width: 1024,
+      height: 1024,
+    });
+  });
+});

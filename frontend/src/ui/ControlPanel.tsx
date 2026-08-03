@@ -26,6 +26,7 @@ import { Drawers } from "./Drawers";
 import { ThemeToggle } from "./ThemeToggle";
 import {
   useStore,
+  type CanvasBoundsBehavior,
   type LLMModel,
   type OllamaThinkingMode,
   type TrackingMode,
@@ -124,6 +125,15 @@ const VLM_GUIDE_PROMPT_CHOICE_OPTIONS: ReadonlyArray<{
   { value: "select", label: "Select" },
   { value: "compose", label: "Compose" },
   { value: "hybrid", label: "Hybrid" },
+];
+
+const CANVAS_BOUNDS_BEHAVIOR_OPTIONS: ReadonlyArray<{
+  value: CanvasBoundsBehavior;
+  label: string;
+}> = [
+  { value: "prepare", label: "Prepare" },
+  { value: "growth", label: "Limit growth" },
+  { value: "centered", label: "Around center" },
 ];
 
 const OLLAMA_THINKING_LABELS: Record<OllamaThinkingMode, string> = {
@@ -515,12 +525,13 @@ export function ControlPanel({
           baseImageURL: dataURL,
           baseImgPosition: { x: 0, y: 0, width: 1024, height: 1024 },
           baseCOM: { x: 0.5, y: 0.5 },
+          firstPatchPosition: null,
           isComposited: false,
           vlmPoint: null,
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
+          boundsWorkspaceReady: false,
         });
       } catch (err) {
         if (!cancelled) {
@@ -1612,6 +1623,13 @@ export function ControlPanel({
           label="Limit canvas size"
           checked={s.boundsEnabled}
           onChange={(v) => s.set("boundsEnabled", v)}
+        />
+        <Dropdown<CanvasBoundsBehavior>
+          label="Limit mode"
+          value={s.boundsBehavior}
+          options={CANVAS_BOUNDS_BEHAVIOR_OPTIONS}
+          onChange={(v) => s.set("boundsBehavior", v)}
+          disabled={!s.boundsEnabled}
         />
         <NumberInput
           label={

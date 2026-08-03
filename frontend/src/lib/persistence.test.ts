@@ -78,6 +78,7 @@ describe("settings files", () => {
     writeJSON(StorageKeys.vlmGuideActionHeight, 96);
     writeJSON(StorageKeys.autoCollapsePanels, true);
     writeJSON(StorageKeys.mutedWorkflows, ["edit/example.json"]);
+    writeJSON(StorageKeys.boundsBehavior, "centered");
 
     const file = createSettingsFile();
 
@@ -103,6 +104,7 @@ describe("settings files", () => {
         vlmGuideActionHeight: 96,
         autoCollapsePanels: true,
         mutedWorkflows: ["edit/example.json"],
+        boundsBehavior: "centered",
       },
     });
   });

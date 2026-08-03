@@ -12,8 +12,7 @@
 import { useEffect, useRef } from "react";
 
 import {
-  deriveCOMBounds,
-  deriveCompositeMaxSize,
+  deriveCanvasCOMBounds,
   deriveRoamConstraint,
 } from "../../canvas/CompositeBounds";
 import { compositeStore } from "../../canvas/CompositeStore";
@@ -87,14 +86,15 @@ export function useTracker({
 
       const canvas = compositeStore.getCanvas();
       if (!canvas) return null;
-      const maxSize = deriveCompositeMaxSize({
-        enabled: s.boundsEnabled,
-        width: s.boundsWidth,
-        height: s.boundsHeight,
-      });
-      const comBounds = deriveCOMBounds(maxSize, {
-        width: canvas.width,
-        height: canvas.height,
+      const comBounds = deriveCanvasCOMBounds({
+        config: {
+          enabled: s.boundsEnabled,
+          width: s.boundsWidth,
+          height: s.boundsHeight,
+        },
+        behavior: s.boundsBehavior,
+        compositeSize: { width: canvas.width, height: canvas.height },
+        firstPatch: s.firstPatchPosition ?? s.baseImgPosition,
       });
       if (!comBounds) return null;
 

@@ -51,6 +51,12 @@ export interface PlanInput {
    * overflow is clipped on the growth side without sliding the patch inward.
    */
   maxSize?: Size;
+  /**
+   * Optional fixed clipping window in the previous canvas's coordinate system.
+   * Used by centered limits. The patch retains its natural COM anchor and may
+   * extend outside this rectangle; only the rendered overflow is discarded.
+   */
+  bounds?: PatchBox;
 }
 
 export interface PlanResult {
@@ -85,7 +91,15 @@ export interface PlanResult {
  * `prevSize` + `prevPosition`. See `PlanResult` for the meaning of fields.
  */
 export function planComposite(input: PlanInput): PlanResult {
-  const { prevSize, prevPosition, newSize, newCOM, useCOM, maxSize } = input;
+  const {
+    prevSize,
+    prevPosition,
+    newSize,
+    newCOM,
+    useCOM,
+    maxSize,
+    bounds,
+  } = input;
 
   // Where on the previous canvas do we anchor the new patch's center?
   // `useCOM` alone decides: set → anchor on the gaze center-of-mass over
@@ -114,22 +128,36 @@ export function planComposite(input: PlanInput): PlanResult {
   const naturalMaxX = Math.max(prevSize.width, newRawX + newSize.width);
   const naturalMaxY = Math.max(prevSize.height, newRawY + newSize.height);
 
-  const xRange = capAxis({
-    naturalMin: naturalMinX,
-    naturalMax: naturalMaxX,
-    previousSize: prevSize.width,
-    patchStart: newRawX,
-    patchSize: newSize.width,
-    maxSize: maxSize?.width,
-  });
-  const yRange = capAxis({
-    naturalMin: naturalMinY,
-    naturalMax: naturalMaxY,
-    previousSize: prevSize.height,
-    patchStart: newRawY,
-    patchSize: newSize.height,
-    maxSize: maxSize?.height,
-  });
+  const xRange = bounds
+    ? clipAxis({
+        naturalMin: naturalMinX,
+        naturalMax: naturalMaxX,
+        boundsStart: bounds.x,
+        boundsSize: bounds.width,
+      })
+    : capAxis({
+        naturalMin: naturalMinX,
+        naturalMax: naturalMaxX,
+        previousSize: prevSize.width,
+        patchStart: newRawX,
+        patchSize: newSize.width,
+        maxSize: maxSize?.width,
+      });
+  const yRange = bounds
+    ? clipAxis({
+        naturalMin: naturalMinY,
+        naturalMax: naturalMaxY,
+        boundsStart: bounds.y,
+        boundsSize: bounds.height,
+      })
+    : capAxis({
+        naturalMin: naturalMinY,
+        naturalMax: naturalMaxY,
+        previousSize: prevSize.height,
+        patchStart: newRawY,
+        patchSize: newSize.height,
+        maxSize: maxSize?.height,
+      });
   const minX = xRange.min;
   const minY = yRange.min;
   const maxX = xRange.max;
@@ -173,6 +201,21 @@ export function planComposite(input: PlanInput): PlanResult {
     newPosition,
     coordinateShift,
   };
+}
+
+function clipAxis(params: {
+  naturalMin: number;
+  naturalMax: number;
+  boundsStart: number;
+  boundsSize: number;
+}): { min: number; max: number } {
+  const { naturalMin, naturalMax, boundsStart, boundsSize } = params;
+  const min = Math.max(naturalMin, boundsStart);
+  const max = Math.min(naturalMax, boundsStart + boundsSize);
+  // A correctly tracked first-patch anchor always intersects the current
+  // composite. Fail open rather than allocating a zero-sized canvas if stale
+  // external state ever violates that invariant.
+  return max > min ? { min, max } : { min: naturalMin, max: naturalMax };
 }
 
 /**

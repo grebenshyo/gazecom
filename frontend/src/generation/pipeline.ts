@@ -26,7 +26,8 @@ import type { HeatmapInstance } from "../canvas/HeatmapInstance";
 import { applyPlan, planComposite } from "../canvas/Composite";
 import {
   clampCOMToBounds,
-  deriveCOMBounds,
+  deriveCanvasCOMBounds,
+  deriveCenteredCompositeBounds,
   deriveCompositeMaxSize,
 } from "../canvas/CompositeBounds";
 import { compositeStore } from "../canvas/CompositeStore";
@@ -168,6 +169,8 @@ export async function generateOnce(
   let generatedURL: string | null = null;
 
   try {
+    await prepareCanvasForGeneration(canvasVlmActive);
+
     // 2. Resolve canvas guidance, then the generation prompt.
     //   Guide chooses the next Pull location from the complete canvas. Rotate
     //   uses the weighted pool, Select carries an exact pool choice, Compose
@@ -511,7 +514,7 @@ async function maybeDescribeVisionPrompt(
  */
 const VLM_POINT_ATTEMPTS = 3;
 const VLM_GUIDE_ATTEMPTS = 3;
-const MAX_GUIDE_WORKSPACE_PIXELS = 4096 * 4096;
+const MAX_PREPARED_WORKSPACE_PIXELS = 4096 * 4096;
 const VLM_GUIDE_MEMORY_MAX_EDGE = 512;
 
 function ollamaThinkFor(
@@ -533,7 +536,6 @@ async function ensureCanvasAction(
   const pending = useStore.getState().vlmGuideAction;
   if (pending && pendingActionMatchesState(pending)) return true;
   if (pending) useStore.getState().set("vlmGuideAction", null);
-  await prepareGuideWorkspace();
   if (signal?.aborted) {
     throw new DOMException(
       "Generation aborted before VLM canvas decision",
@@ -586,12 +588,16 @@ async function ensureCanvasAction(
   return true;
 }
 
-async function prepareGuideWorkspace(): Promise<void> {
+async function prepareCanvasForGeneration(
+  forceComposite: boolean,
+): Promise<void> {
   const state = useStore.getState();
   const source = compositeStore.getCanvas();
 
-  if (!state.boundsEnabled) {
-    if (!source) {
+  if (!forceComposite && !state.compositeMode) return;
+
+  if (!state.boundsEnabled || state.boundsBehavior !== "prepare") {
+    if (!source && forceComposite) {
       const blank = document.createElement("canvas");
       blank.width = blank.height = PULL_PATCH_SIZE;
       await compositeStore.setCanvas(blank);
@@ -604,28 +610,33 @@ async function prepareGuideWorkspace(): Promise<void> {
         },
       });
     }
-    useStore.getState().patch({
-      comMode: true,
-      compositeMode: true,
-      vlmGuideWorkspaceReady: true,
-    });
+    if (forceComposite) {
+      useStore.getState().patch({ comMode: true, compositeMode: true });
+    }
     return;
   }
 
+  // Other drivers normally have a selected image seeded already. Without a
+  // source, let their first result seed naturally rather than replacing the
+  // generation input with a blank prepared canvas.
+  if (!source && !forceComposite) return;
+
   const width = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsWidth));
   const height = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsHeight));
-  if (width * height > MAX_GUIDE_WORKSPACE_PIXELS) {
+  if (width * height > MAX_PREPARED_WORKSPACE_PIXELS) {
     throw new Error(
-      "VLM Guide workspace is too large to allocate safely. " +
+      "Prepared canvas workspace is too large to allocate safely. " +
         "Use canvas limits no larger than 4096 x 4096.",
     );
   }
   if (
-    state.vlmGuideWorkspaceReady &&
+    state.boundsWorkspaceReady &&
     source?.width === width &&
     source.height === height
   ) {
-    useStore.getState().patch({ comMode: true, compositeMode: true });
+    if (forceComposite) {
+      useStore.getState().patch({ comMode: true, compositeMode: true });
+    }
     return;
   }
 
@@ -634,7 +645,7 @@ async function prepareGuideWorkspace(): Promise<void> {
   workspace.height = height;
   const ctx = workspace.getContext("2d");
   if (!ctx) {
-    throw new Error("VLM Guide could not create its bounded workspace.");
+    throw new Error("Could not create the prepared canvas workspace.");
   }
 
   const offset = source
@@ -673,11 +684,17 @@ async function prepareGuideWorkspace(): Promise<void> {
     firstPatchPosition: state.firstPatchPosition
       ? shiftBox(state.firstPatchPosition)
       : null,
-    comMode: true,
-    compositeMode: true,
     vlmGuideAction: null,
-    vlmGuideWorkspaceReady: true,
+    boundsWorkspaceReady: true,
+    ...(forceComposite ? { comMode: true, compositeMode: true } : {}),
   });
+  if (offset.x !== 0 || offset.y !== 0) {
+    window.dispatchEvent(
+      new CustomEvent("gz-composite-shift", {
+        detail: { coordinateShift: offset },
+      }),
+    );
+  }
 }
 
 export function renderGuidePrompt(
@@ -1412,17 +1429,19 @@ async function buildInput(
     // so COM never lags a heatmap clear/re-emit cycle.
     const pos = state.baseImgPosition;
     const sourceCanvas = compositeStore.getCanvas();
-    const maxSize = deriveCompositeMaxSize({
+    const boundsConfig = {
       enabled: state.compositeMode && state.boundsEnabled,
       width: state.boundsWidth,
       height: state.boundsHeight,
-    });
-    const comBounds = deriveCOMBounds(
-      maxSize,
-      sourceCanvas
+    };
+    const comBounds = deriveCanvasCOMBounds({
+      config: boundsConfig,
+      behavior: state.boundsBehavior,
+      compositeSize: sourceCanvas
         ? { width: sourceCanvas.width, height: sourceCanvas.height }
         : { width: pos.width, height: pos.height },
-    );
+      firstPatch: state.firstPatchPosition ?? pos,
+    });
     const rawCOM = resolveInputCOM({
       trackingMode: state.trackingMode,
       vlmPoint: useStore.getState().vlmPoint,
@@ -1537,6 +1556,7 @@ async function applyResult(
       // mode on, the first growth iteration uses this as its reference.
       firstPatchPosition: seedBox,
       isComposited: false,
+      boundsWorkspaceReady: false,
     };
     if (state.feedbackMode) simplePatch.baseImageURL = newImageURL;
     useStore.getState().patch(simplePatch);
@@ -1559,6 +1579,7 @@ async function applyResult(
       baseImgPosition: seedBox,
       firstPatchPosition: seedBox,
       isComposited: false,
+      boundsWorkspaceReady: false,
     };
     if (state.feedbackMode) firstPatch.baseImageURL = newImageURL;
     useStore.getState().patch(firstPatch);
@@ -1570,12 +1591,24 @@ async function applyResult(
   const firstPatch = state.firstPatchPosition ?? state.baseImgPosition;
   const nextSize = { width: newImg.naturalWidth, height: newImg.naturalHeight };
   const prevSize = { width: prevCanvas.width, height: prevCanvas.height };
-  const maxSize = deriveCompositeMaxSize({
+  const boundsConfig = {
     enabled: state.boundsEnabled,
     width: state.boundsWidth,
     height: state.boundsHeight,
+  };
+  const centeredBounds =
+    state.boundsBehavior === "centered"
+      ? deriveCenteredCompositeBounds(boundsConfig, firstPatch)
+      : undefined;
+  const maxSize = centeredBounds
+    ? undefined
+    : deriveCompositeMaxSize(boundsConfig);
+  const comBounds = deriveCanvasCOMBounds({
+    config: boundsConfig,
+    behavior: state.boundsBehavior,
+    compositeSize: prevSize,
+    firstPatch,
   });
-  const comBounds = deriveCOMBounds(maxSize, prevSize);
   // Re-clamp the live COM in case the cap changed during generation. This
   // constrains only the anchor point; planComposite clips patch overflow.
   const placementCOM = useCOM
@@ -1595,6 +1628,7 @@ async function applyResult(
     workflow: workflowType,
     useCOM,
     maxSize,
+    bounds: centeredBounds,
   });
   const newCanvas = applyPlan(plan, prevCanvas, newImg);
   await compositeStore.setCanvas(newCanvas);

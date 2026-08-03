@@ -51,10 +51,11 @@ placed.
   Its toggle adds a visible explanation to every editable Guide prompt, while
   the retained image history remains fixed at one previous canvas.
 
-With canvas limits on, Guide prepares the full workspace before its first
-decision; without limits, edge decisions expand the current composite. It can
-start from an image or a blank canvas. Applied coordinates and prompts remain in
-bounded Ollama chat history while only the latest canvas image is submitted.
+Guide follows the selected canvas-limit mode like every other driver. Prepare
+exposes the complete fixed workspace from its first decision; Growth and Around
+center let edge decisions expand the current composite. Guide can start from an
+image or a blank canvas. Applied coordinates and prompts remain in bounded
+Ollama chat history while only the latest canvas image is submitted.
 Pausing tracking preserves that context; changing the canvas, model, behavior,
 choice, prompt, history limit, or canvas limits starts a new conversation. Set
 History to 0 to disable continuity.
@@ -158,10 +159,17 @@ the remaining weights.
 The Settings section groups heatmap appearance, dot rendering, input-image
 selection, matte controls, Feedback, COM, Composite, and Iterative controls.
 
-Enable **Limit canvas size** under Advanced to set a maximum width and height.
-The canvas grows naturally in whichever direction COM or Pull drives it until
-that size is reached. Further overflow is clipped rather than shifted inward,
-so placement remains tied to the COM that produced it.
+Enable **Limit canvas size** under Advanced, set its dimensions, and choose a
+limit mode:
+
+- **Prepare** allocates the full workspace once and centers existing content.
+- **Limit growth** lets the canvas grow naturally in any direction until its
+  width and height reach the configured maximum.
+- **Around center** fixes the configured boundary around the first patch while
+  letting the visible composite grow into it.
+
+Every mode preserves the requested COM placement. Content extending beyond the
+active boundary is clipped rather than shifting the generated patch inward.
 
 ## Canvas actions
 

@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
 import { type HeatmapStyleName } from "../canvas/Heatmap";
+import type { CanvasBoundsBehavior } from "../canvas/CompositeBounds";
 import {
   StorageKeys,
   clearKey,
@@ -45,6 +46,7 @@ export type TrackingMode =
 
 export type CompositeFitTarget = "patch" | "composite";
 export type UIScale = 72 | 80 | 100;
+export type { CanvasBoundsBehavior } from "../canvas/CompositeBounds";
 export type { OllamaThinkingMode } from "../generation/api";
 export type VLMBehavior = "point" | "guide";
 export type VLMGuidePromptChoice =
@@ -257,8 +259,8 @@ export interface AppState {
   vlmGuideHistory: VLMCanvasAction[];
   /** Maximum applied Guide decisions retained; zero disables continuity. */
   vlmGuideHistoryLimit: number;
-  /** Whether bounded Guide mode has prepared its fixed workspace. Transient. */
-  vlmGuideWorkspaceReady: boolean;
+  /** Whether Prepare has allocated the configured fixed workspace. Transient. */
+  boundsWorkspaceReady: boolean;
   /**
    * Travel-speed multiplier for the synthetic roamers (roam / roam2).
    * 0.2 = the tuned default; the panel exposes a slider (roam modes only)
@@ -355,9 +357,9 @@ export interface AppState {
   firstPatchPosition: PatchBox | null;
 
   // ── Bounds (canvas size cap) ──────────────────────────────────────
-  /** When true, cap the canvas at `boundsWidth × boundsHeight` while allowing
-   *  natural growth in any direction. Off preserves infinite-canvas behaviour. */
+  /** When true, apply the selected finite-canvas policy. */
   boundsEnabled: boolean;
+  boundsBehavior: CanvasBoundsBehavior;
   boundsWidth: number;
   boundsHeight: number;
 
@@ -558,6 +560,7 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.autoDownloadEvery,
     StorageKeys.autoClearEvery,
     StorageKeys.boundsEnabled,
+    StorageKeys.boundsBehavior,
     StorageKeys.boundsWidth,
     StorageKeys.boundsHeight,
     StorageKeys.vlmModel,
@@ -676,7 +679,7 @@ function loadInitial(): AppState {
     vlmGuideAction: null,
     vlmGuideHistory: [],
     vlmGuideHistoryLimit: loadVlmGuideHistoryLimit(),
-    vlmGuideWorkspaceReady: false,
+    boundsWorkspaceReady: false,
     roamSpeed: trackingProfile.roamSpeed,
     trailLength: trackingProfile.trailLength,
     eventHistoryLength: readJSON<number>(
@@ -698,6 +701,7 @@ function loadInitial(): AppState {
       "composite",
     ),
     boundsEnabled: readJSON<boolean>(StorageKeys.boundsEnabled, false),
+    boundsBehavior: loadBoundsBehavior(),
     boundsWidth: readJSON<number>(StorageKeys.boundsWidth, 2048),
     boundsHeight: readJSON<number>(StorageKeys.boundsHeight, 2048),
     skipProviderErrors: readJSON<boolean>(StorageKeys.skipProviderErrors, false),
@@ -813,6 +817,11 @@ function loadOllamaThinkingMode(key: StorageKey): OllamaThinkingMode {
   return "off";
 }
 
+function loadBoundsBehavior(): CanvasBoundsBehavior {
+  const stored = readJSON<unknown>(StorageKeys.boundsBehavior, "prepare");
+  return stored === "growth" || stored === "centered" ? stored : "prepare";
+}
+
 function loadVlmGuideHistoryLimit(): number {
   const stored = readJSON<unknown>(
     StorageKeys.vlmGuideHistoryLimit,
@@ -902,6 +911,7 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["compositeFitEnabled", StorageKeys.compositeFitEnabled],
   ["compositeFitTarget", StorageKeys.compositeFitTarget],
   ["boundsEnabled", StorageKeys.boundsEnabled],
+  ["boundsBehavior", StorageKeys.boundsBehavior],
   ["boundsWidth", StorageKeys.boundsWidth],
   ["boundsHeight", StorageKeys.boundsHeight],
   ["skipProviderErrors", StorageKeys.skipProviderErrors],
@@ -964,7 +974,6 @@ export const useStore = create<AppState & AppActions>()(
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
         }));
         return;
       }
@@ -983,7 +992,6 @@ export const useStore = create<AppState & AppActions>()(
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
         });
         return;
       }
@@ -994,7 +1002,6 @@ export const useStore = create<AppState & AppActions>()(
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
         });
         return;
       }
@@ -1009,7 +1016,6 @@ export const useStore = create<AppState & AppActions>()(
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
         }));
         return;
       }
@@ -1036,7 +1042,6 @@ export const useStore = create<AppState & AppActions>()(
           vlmPoint: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
         }));
         return;
       }
@@ -1065,6 +1070,7 @@ export const useStore = create<AppState & AppActions>()(
         key === "vlmHybridPrompt" ||
         key === "selectedImage" ||
         key === "boundsEnabled" ||
+        key === "boundsBehavior" ||
         key === "boundsWidth" ||
         key === "boundsHeight"
       ) {
@@ -1074,7 +1080,7 @@ export const useStore = create<AppState & AppActions>()(
           vlmGuidePreviousCanvas: null,
           vlmGuideAction: null,
           vlmGuideHistory: [],
-          vlmGuideWorkspaceReady: false,
+          boundsWorkspaceReady: false,
         } as Partial<AppState>);
         return;
       }
@@ -1108,7 +1114,7 @@ export const useStore = create<AppState & AppActions>()(
         vlmGuidePreviousCanvas: null,
         vlmGuideAction: null,
         vlmGuideHistory: [],
-        vlmGuideWorkspaceReady: false,
+        boundsWorkspaceReady: false,
       })),
     resetSection: (section) => {
       for (const key of SECTION_STORAGE_KEYS[section]) clearKey(key);
@@ -1165,7 +1171,6 @@ export const useStore = create<AppState & AppActions>()(
               vlmGuidePreviousCanvas: null,
               vlmGuideAction: null,
               vlmGuideHistory: [],
-              vlmGuideWorkspaceReady: false,
             };
           });
           break;
@@ -1199,6 +1204,7 @@ export const useStore = create<AppState & AppActions>()(
             autoDownloadEvery: defaults.autoDownloadEvery,
             autoClearEvery: defaults.autoClearEvery,
             boundsEnabled: defaults.boundsEnabled,
+            boundsBehavior: defaults.boundsBehavior,
             boundsWidth: defaults.boundsWidth,
             boundsHeight: defaults.boundsHeight,
             vlmModel: defaults.vlmModel,
@@ -1208,7 +1214,7 @@ export const useStore = create<AppState & AppActions>()(
             vlmGuidePreviousCanvas: null,
             vlmGuideAction: null,
             vlmGuideHistory: [],
-            vlmGuideWorkspaceReady: false,
+            boundsWorkspaceReady: false,
           });
           break;
         case "view":

@@ -13,6 +13,8 @@ export interface CompositeBoundsConfig {
   height: number;
 }
 
+export type CanvasBoundsBehavior = "prepare" | "growth" | "centered";
+
 export interface Rect {
   x: number;
   y: number;
@@ -32,6 +34,43 @@ export function deriveCompositeMaxSize(
   if (!config.enabled) return undefined;
   if (config.width <= 0 || config.height <= 0) return undefined;
   return { width: config.width, height: config.height };
+}
+
+/**
+ * Fixed bounds centered on the first patch. The anchor is stored in the live
+ * composite coordinate system and translated after every canvas shift, so the
+ * same world-space rectangle survives left/up growth and clipping.
+ */
+export function deriveCenteredCompositeBounds(
+  config: CompositeBoundsConfig,
+  firstPatch: PatchBoxLike | null,
+): Rect | undefined {
+  if (!config.enabled || !firstPatch) return undefined;
+  if (config.width <= 0 || config.height <= 0) return undefined;
+  if (firstPatch.width <= 0 || firstPatch.height <= 0) return undefined;
+
+  const centerX = firstPatch.x + firstPatch.width / 2;
+  const centerY = firstPatch.y + firstPatch.height / 2;
+  return {
+    x: Math.round(centerX - config.width / 2),
+    y: Math.round(centerY - config.height / 2),
+    width: config.width,
+    height: config.height,
+  };
+}
+
+/** Resolve the legal COM point range for the selected canvas-limit policy. */
+export function deriveCanvasCOMBounds(params: {
+  config: CompositeBoundsConfig;
+  behavior: CanvasBoundsBehavior;
+  compositeSize: SizeLike;
+  firstPatch: PatchBoxLike | null;
+}): Rect | undefined {
+  const { config, behavior, compositeSize, firstPatch } = params;
+  if (behavior === "centered") {
+    return deriveCenteredCompositeBounds(config, firstPatch);
+  }
+  return deriveCOMBounds(deriveCompositeMaxSize(config), compositeSize);
 }
 
 /**

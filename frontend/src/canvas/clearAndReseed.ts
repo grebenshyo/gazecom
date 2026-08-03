@@ -44,7 +44,7 @@ export async function clearAndReseed(
     vlmGuidePreviousCanvas: null,
     vlmGuideAction: null,
     vlmGuideHistory: [],
-    vlmGuideWorkspaceReady: false,
+    boundsWorkspaceReady: false,
     // Display counter ("patches since last clear") resets here so
     // both the manual button and the pipeline's auto-clear path
     // restart from 0 the same way.
