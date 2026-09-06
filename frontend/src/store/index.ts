@@ -54,7 +54,6 @@ export type VLMGuidePromptChoice =
   | "select"
   | "compose"
   | "hybrid";
-export type VLMScope = "frame" | "canvas";
 
 export type LLMModel = string;
 export type ResettableSection =
@@ -257,9 +256,8 @@ export interface AppState {
   trackerCalibrated: boolean;
   /**
    * VLM-mode point normalized to [0, 1] over the active generation frame.
-   * Frame scope stores the model's returned point directly. Canvas scope
-   * moves Pull to the returned canvas point, then stores the local center
-   * because that point is now centered in the pulled frame. Transient.
+   * Point stores the model's returned coordinate directly; Guide stores the
+   * local center after moving Pull to its complete-canvas decision. Transient.
    */
   vlmPoint: { x: number; y: number } | null;
   /** VLM tracking policy: locate saliency, or guide the next Pull location. */
@@ -447,8 +445,6 @@ export interface AppState {
   ollamaModelCapabilities: Record<string, string[]>;
   /** Accepted Ollama thinking modes keyed by model name. Refreshed from the server. */
   ollamaModelThinkingModes: Record<string, OllamaThinkingMode[]>;
-  /** Image coordinate space used by VLM tracking. */
-  vlmScope: VLMScope;
   llmEnhancePrompt: string;
   /** VLM-mode instruction for locating the salient point (Settings). */
   vlmPointPrompt: string;
@@ -554,7 +550,6 @@ const SECTION_STORAGE_KEYS: Record<ResettableSection, readonly StorageKey[]> = {
     StorageKeys.vlmRotatePoolContext,
     StorageKeys.vlmGuideVisualMemory,
     StorageKeys.vlmGuideHistoryLimit,
-    StorageKeys.vlmScope,
     StorageKeys.vlmPointPrompt,
     StorageKeys.vlmGuidePrompt,
     StorageKeys.vlmSelectPrompt,
@@ -771,7 +766,6 @@ function loadInitial(): AppState {
     vlmThinkingMode: loadOllamaThinkingMode(StorageKeys.vlmThinkingMode),
     ollamaModelCapabilities: {},
     ollamaModelThinkingModes: {},
-    vlmScope: readJSON<VLMScope>(StorageKeys.vlmScope, "frame"),
     llmEnhancePrompt: readJSON<string>(
       StorageKeys.llmEnhancePrompt,
       DEFAULT_LLM_ENHANCE_PROMPT,
@@ -953,7 +947,6 @@ const PERSISTENT_FIELDS: ReadonlyArray<readonly [keyof AppState, StorageKey]> = 
   ["vlmRotatePoolContext", StorageKeys.vlmRotatePoolContext],
   ["vlmGuideVisualMemory", StorageKeys.vlmGuideVisualMemory],
   ["vlmGuideHistoryLimit", StorageKeys.vlmGuideHistoryLimit],
-  ["vlmScope", StorageKeys.vlmScope],
   ["llmEnhancePrompt", StorageKeys.llmEnhancePrompt],
   ["vlmPointPrompt", StorageKeys.vlmPointPrompt],
   ["vlmGuidePrompt", StorageKeys.vlmGuidePrompt],
@@ -1077,10 +1070,6 @@ export const useStore = create<AppState & AppActions>()(
         });
         return;
       }
-      if (key === "vlmScope") {
-        set({ vlmScope: value as VLMScope, vlmPoint: null });
-        return;
-      }
       if (
         key === "vlmModel" ||
         key === "vlmGuidePrompt" ||
@@ -1177,7 +1166,6 @@ export const useStore = create<AppState & AppActions>()(
               vlmRotatePoolContext: defaults.vlmRotatePoolContext,
               vlmGuideVisualMemory: defaults.vlmGuideVisualMemory,
               vlmGuideHistoryLimit: defaults.vlmGuideHistoryLimit,
-              vlmScope: defaults.vlmScope,
               vlmPointPrompt: defaults.vlmPointPrompt,
               vlmGuidePrompt: defaults.vlmGuidePrompt,
               vlmSelectPrompt: defaults.vlmSelectPrompt,

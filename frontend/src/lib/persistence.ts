@@ -51,7 +51,6 @@ export const StorageKeys = {
   vlmRotatePoolContext: "gazecom.vlmRotatePoolContext",
   vlmGuideVisualMemory: "gazecom.vlmGuideVisualMemory",
   vlmGuideHistoryLimit: "gazecom.vlmGuideHistoryLimit",
-  vlmScope: "gazecom.vlmScope",
   llmEnhancePrompt: "gazecom.llmEnhancePrompt",
   vlmPointPrompt: "gazecom.vlmPointPrompt",
   vlmGuidePrompt: "gazecom.vlmGuidePrompt",
@@ -277,8 +276,6 @@ function isValidSetting(name: keyof typeof StorageKeys, value: unknown): boolean
     case "llmThinkingMode":
     case "vlmThinkingMode":
       return isOneOf(value, ["off", "on", "low", "medium", "high", "max"]);
-    case "vlmScope":
-      return isOneOf(value, ["frame", "canvas"]);
     case "pinnedPrompts":
       return isPromptSlots(value);
     case "theme":

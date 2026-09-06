@@ -98,13 +98,11 @@ the gazeCOM namespace.
   (gradient styles + COM), `HeatmapInstance.ts` (h337 wrapper),
   `CompositeBounds.ts` (bounds/COM clamping), `PullTool.tsx` (1024² crop).
 - `trackers/` — seven sources behind one `Tracker` interface: WebGazer,
-  Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (the vision
-  model reports a frame-local/canvas point or chooses the next Pull location in
-  Guide behavior, where it can rotate, select, compose, or combine prompt
-  sources;
-  `VLMTracker` renders the resulting local
-  `store.vlmPoint` through the normal heatmap sink). Factory in
-  `trackers/index.ts`.
+  Handpose, Roam, Adaptive Roam, MSI saliency, Cursor, and **VLM** (Point reports
+  a frame-local coordinate; Guide chooses the next complete-canvas Pull
+  location and can rotate, select, compose, or combine prompt sources;
+  `VLMTracker` renders the resulting local `store.vlmPoint` through the normal
+  heatmap sink). Factory in `trackers/index.ts`.
 - `generation/` — `pipeline.ts` (single `generateOnce` entry point),
   `workflows.ts` (weighted-random selection), `captureHeatmap.ts`, `llm.ts`
   (Ollama-backed provider), `api.ts` (typed fetch wrappers).
@@ -211,8 +209,13 @@ selected value is sent explicitly with every relevant request.
 ## VLM Guide orchestration
 
 VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
-requests a structured canvas decision and moves Pull there. Rotate resolves text
-through the normal weighted prompt pool. With Prompt context disabled, its next
+requests a structured canvas decision and moves Pull there. The selected Pull
+position directly defines the patch center. The UI presents COM as active and
+locked because the framing is intrinsic, while the pipeline avoids applying a
+redundant second COM transform. Composite remains an independent setting: the
+decision source is either the accumulated canvas or the latest replacement
+patch. Rotate resolves text through the normal weighted prompt pool. With
+Prompt context disabled, its next
 coordinate can be prepared independently of the following weighted selection.
 With Prompt context enabled, Rotate instead selects and freezes a slot first,
 resolves placeholders and automatic LLM/VLM transforms, expands the visible

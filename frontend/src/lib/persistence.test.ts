@@ -66,7 +66,6 @@ describe("settings files", () => {
     writeJSON(StorageKeys.vlmRotatePoolContext, true);
     writeJSON(StorageKeys.vlmGuideVisualMemory, true);
     writeJSON(StorageKeys.vlmGuideHistoryLimit, 12);
-    writeJSON(StorageKeys.vlmScope, "canvas");
     writeJSON(StorageKeys.vlmGuidePrompt, "Choose the next location.");
     writeJSON(StorageKeys.vlmSelectPrompt, "Choose from {prompt_pool}.");
     writeJSON(StorageKeys.vlmComposePrompt, "Choose the next edit.");
@@ -95,7 +94,6 @@ describe("settings files", () => {
         vlmRotatePoolContext: true,
         vlmGuideVisualMemory: true,
         vlmGuideHistoryLimit: 12,
-        vlmScope: "canvas",
         vlmGuidePrompt: "Choose the next location.",
         vlmSelectPrompt: "Choose from {prompt_pool}.",
         vlmComposePrompt: "Choose the next edit.",

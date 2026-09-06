@@ -73,7 +73,7 @@ async function stubBackend(page: Page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ status: "ok", version: "0.4.1" }),
+      body: JSON.stringify({ status: "ok", version: "0.4.2" }),
     });
   });
   await page.route("**/api/config", async (route) => {
@@ -146,6 +146,41 @@ test("help drawer renders the repository Guide", async ({ page }) => {
     "href",
     "https://github.com/grebenshyo/gazecom/blob/main/docs/WORKFLOWS.md",
   );
+});
+
+test("VLM Point is frame-local and Guide locks COM on", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /close/i }).click();
+  await page
+    .getByRole("combobox", { name: "Mode", exact: true })
+    .selectOption("vlm");
+  const settingsSection = page
+    .locator("button.gz-section__title")
+    .filter({ hasText: /^Settings/ });
+  if ((await settingsSection.getAttribute("aria-expanded")) !== "true") {
+    await settingsSection.click();
+  }
+
+  const behavior = page.getByRole("combobox", { name: "Behavior" });
+  const com = page.getByRole("checkbox", { name: "COM", exact: true });
+  const composite = page.getByRole("checkbox", {
+    name: "Composite",
+    exact: true,
+  });
+  await expect(
+    page.getByRole("combobox", { name: "VLM scope" }),
+  ).toHaveCount(0);
+  await expect(com).toBeEnabled();
+
+  await behavior.selectOption("guide");
+  await expect(com).toBeDisabled();
+  await expect(com).toBeChecked();
+  await expect(composite).toBeEnabled();
+  await composite.uncheck();
+  await expect(composite).not.toBeChecked();
+
+  await behavior.selectOption("point");
+  await expect(com).toBeEnabled();
 });
 
 test("control panel renders all sections", async ({ page }) => {

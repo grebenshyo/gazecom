@@ -1,11 +1,10 @@
 /**
  * VLM tracker — the vision model drives tracking.
  *
- * The point is produced by the generation pipeline after each generation.
- * Frame scope sends the generated patch and stores the returned local point.
- * Canvas scope sends the full composite, centers Pull on the returned global
- * point, and stores the resulting local center. `buildInput` reads
- * `store.vlmPoint` for COM and this tracker renders it into the heatmap.
+ * The point is produced by the generation pipeline after each generation. The
+ * generated patch is sent to the model and its returned frame-local point is
+ * stored for COM; complete-canvas decisions belong to Guide. This tracker
+ * renders `store.vlmPoint` into the heatmap.
  *
  * Rendering goes through the normal `HeatmapSink`, so the point picks up
  * the active heatmap style (Moiré rings, Blackbody, …) and the Point-size /

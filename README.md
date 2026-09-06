@@ -15,7 +15,7 @@ gazeCOM connects to [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for
 image generation and to [Ollama](https://ollama.com/) for language and vision
 models.
 
-> Current version: v0.4.1
+> Current version: v0.4.2
 
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
@@ -122,8 +122,8 @@ It provides two behaviors:
 
 | Behavior | Function |
 |---|---|
-| **Point** | Tracks a VLM-derived saliency point in the latest frame or complete composite; the regular weighted prompt pool supplies the generation text |
-| **Guide** | Uses the vision model to define COM framing across the complete composite and applies the selected prompt strategy |
+| **Point** | Tracks a VLM-derived saliency point within the latest generated frame; the regular weighted prompt pool supplies the generation text |
+| **Guide** | Uses the vision model to define COM framing across the current working image and applies the selected prompt strategy |
 
 Guide provides four prompt strategies:
 

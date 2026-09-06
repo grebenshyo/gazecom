@@ -146,9 +146,11 @@ export async function generateOnce(
   // The COM toggle is authoritative for every workflow. Edit and
   // in-/outpainting do not force COM implicitly; the flag alone decides.
   // This keeps placement and crop selection uniform across workflow types.
-  // Guide is a deliberate exception: its chosen coordinates are the COM input
-  // and its output must be composited for the next decision.
-  const useCOM = state.comMode || canvasVlmActive;
+  // Guide moves Pull directly, so its selected coordinate is already the
+  // geometric center of the working patch. Running that center through COM
+  // again adds no spatial information. Composite remains an independent user
+  // choice: Guide can inspect either an accumulated canvas or a single patch.
+  const useCOM = canvasVlmActive ? false : state.comMode;
 
   // Capture the epoch at the start of this generation. If Pull or Clear
   // fires while we're awaiting the backend (or even after the response
@@ -374,9 +376,8 @@ export async function generateOnce(
       });
     }
 
-    // 6b. VLM mode: ask for the next point after applying the result. Frame
-    //     scope stores a local COM; Canvas scope centers Pull on the returned
-    //     composite coordinate and makes that crop the next working frame.
+    // 6b. VLM Point: ask for the next frame-local saliency point after applying
+    //     the result. Guide handles all complete-canvas navigation above.
     await maybeUpdateVlmTracking(response.objectURL, signal, myEpoch);
 
     // 7. Auto-cadenced side effects: download then clear. The counter
@@ -673,16 +674,14 @@ async function ensureCanvasAction(
   return true;
 }
 
-async function prepareCanvasForGeneration(
-  forceComposite: boolean,
-): Promise<void> {
+async function prepareCanvasForGeneration(ensureCanvas: boolean): Promise<void> {
   const state = useStore.getState();
   const source = compositeStore.getCanvas();
 
-  if (!forceComposite && !state.compositeMode) return;
+  if (!ensureCanvas && !state.compositeMode) return;
 
   if (!state.boundsEnabled || state.boundsBehavior !== "prepare") {
-    if (!source && forceComposite) {
+    if (!source && ensureCanvas) {
       const blank = document.createElement("canvas");
       blank.width = blank.height = PULL_PATCH_SIZE;
       await compositeStore.setCanvas(blank);
@@ -695,16 +694,13 @@ async function prepareCanvasForGeneration(
         },
       });
     }
-    if (forceComposite) {
-      useStore.getState().patch({ comMode: true, compositeMode: true });
-    }
     return;
   }
 
   // Other drivers normally have a selected image seeded already. Without a
   // source, let their first result seed naturally rather than replacing the
   // generation input with a blank prepared canvas.
-  if (!source && !forceComposite) return;
+  if (!source && !ensureCanvas) return;
 
   const width = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsWidth));
   const height = Math.max(PULL_PATCH_SIZE, Math.round(state.boundsHeight));
@@ -719,9 +715,6 @@ async function prepareCanvasForGeneration(
     source?.width === width &&
     source.height === height
   ) {
-    if (forceComposite) {
-      useStore.getState().patch({ comMode: true, compositeMode: true });
-    }
     return;
   }
 
@@ -771,7 +764,6 @@ async function prepareCanvasForGeneration(
       : null,
     vlmGuideAction: null,
     boundsWorkspaceReady: true,
-    ...(forceComposite ? { comMode: true, compositeMode: true } : {}),
   });
   if (offset.x !== 0 || offset.y !== 0) {
     window.dispatchEvent(
@@ -1202,10 +1194,10 @@ async function applyGuideDecision(
 }
 
 /**
- * VLM-mode per-generation step. Point behavior keeps its existing frame/canvas
- * policies. Guide always reads the complete current canvas and chooses the Pull
- * location. Its prompt strategy may rotate, select, compose, or choose between
- * selecting and composing.
+ * VLM-mode per-generation step. Point reads the latest generated frame and
+ * stores a local saliency point. Guide always reads the complete current canvas
+ * and chooses the Pull location. Its prompt strategy may rotate, select,
+ * compose, or choose between selecting and composing.
  *
  * Writing to the store rather than the heatmap directly is deliberate: the
  * tracker re-emits the stored point every tick, so it survives the heatmap
@@ -1297,33 +1289,15 @@ async function maybeUpdateVlmTracking(
     return;
   }
 
-  const scope = live.vlmScope;
-  const canvas = scope === "canvas" ? compositeStore.getCanvas() : null;
-  const canvasSize = canvas
-    ? { width: canvas.width, height: canvas.height }
-    : null;
-
-  // Frame scope reads the generated patch. Canvas scope reads an opaque,
-  // downscaled overview with the same aspect ratio as the live composite.
+  // Point is deliberately frame-local. Complete-canvas VLM navigation belongs
+  // to Guide, whose Rotate strategy provides the coordinate-only equivalent.
   let frame: Blob;
   try {
-    if (scope === "canvas") {
-      if (!canvas) {
-        throw new Error("VLM canvas tracking requires an active composite.");
-      }
-      frame = await captureVisionCanvas({ source: canvas });
-    } else {
-      const resp = await fetch(outputURL, { signal });
-      frame = await resp.blob();
-    }
+    const resp = await fetch(outputURL, { signal });
+    frame = await resp.blob();
   } catch (err) {
     if (isAbortError(err)) throw err;
-    if (err instanceof Error && err.message.startsWith("VLM canvas tracking")) {
-      throw err;
-    }
-    throw new Error(
-      `VLM tracking could not read the ${scope} image.`,
-    );
+    throw new Error("VLM tracking could not read the generated frame.");
   }
 
   const provider = new OllamaVLMProvider(
@@ -1361,17 +1335,15 @@ async function maybeUpdateVlmTracking(
     throw new DOMException("Generation aborted before VLM point", "AbortError");
   }
   if (typeof myEpoch === "number" && myEpoch !== getEpoch()) return;
-  if (useStore.getState().vlmScope !== scope) return;
-
-  if (scope === "canvas" && canvasSize) {
-    const pullPosition = pullPositionForCanvasPoint(point, canvasSize);
-    await pullHandle.triggerAt(pullPosition);
-    // The selected canvas point is now the center of the local pulled frame.
-    useStore.getState().set("vlmPoint", { x: 0.5, y: 0.5 });
+  const current = useStore.getState();
+  if (
+    current.trackingMode !== "vlm" ||
+    current.vlmBehavior !== "point" ||
+    !current.trackingActive
+  ) {
     return;
   }
 
-  // Frame scope keeps the returned normalized point as the next local COM.
   useStore.getState().set("vlmPoint", point);
 }
 

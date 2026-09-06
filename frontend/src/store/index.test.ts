@@ -308,7 +308,6 @@ describe("useStore — actions", () => {
       vlmGuidePromptChoice: "hybrid",
       vlmRotatePoolContext: true,
       vlmGuideVisualMemory: true,
-      vlmScope: "canvas",
       vlmPointPrompt: "custom point prompt",
       vlmGuidePrompt: "custom guide prompt",
       vlmSelectPrompt: "custom select prompt",
@@ -336,7 +335,6 @@ describe("useStore — actions", () => {
       vlmRotatePoolContext: false,
       vlmGuideVisualMemory: false,
       vlmGuidePreviousCanvas: null,
-      vlmScope: "frame",
       vlmPointPrompt: DEFAULT_VLM_POINT_PROMPT,
       vlmGuidePrompt: DEFAULT_VLM_GUIDE_PROMPT,
       vlmSelectPrompt: DEFAULT_VLM_SELECT_PROMPT,
@@ -553,7 +551,6 @@ describe("useStore — persistence", () => {
     localStorage.setItem(StorageKeys.vlmGuidePromptChoice, '"compose"');
     localStorage.setItem(StorageKeys.vlmRotatePoolContext, "true");
     localStorage.setItem(StorageKeys.vlmGuideHistoryLimit, "8");
-    localStorage.setItem(StorageKeys.vlmScope, '"canvas"');
     localStorage.setItem(StorageKeys.vlmGuidePrompt, '"Choose a location."');
     localStorage.setItem(
       StorageKeys.vlmSelectPrompt,
@@ -583,7 +580,6 @@ describe("useStore — persistence", () => {
     expect(useStore.getState().vlmGuidePromptChoice).toBe("compose");
     expect(useStore.getState().vlmRotatePoolContext).toBe(true);
     expect(useStore.getState().vlmGuideHistoryLimit).toBe(8);
-    expect(useStore.getState().vlmScope).toBe("canvas");
     expect(useStore.getState().vlmGuidePrompt).toBe(
       `${VLM_ROTATE_POOL_CONTEXT_BLOCK}\n\nChoose a location.`,
     );

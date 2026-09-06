@@ -28,10 +28,9 @@ placed.
 - **MSI** derives computer-vision saliency from the camera feed.
 - **Roam** provides smooth autonomous movement; **Adaptive Roam** alternates
   exploratory, focused, and scanning behavior.
-- **VLM Point** asks the selected vision model for a salient coordinate after
-  each generation. Frame scope drives COM within the latest patch; Canvas scope
-  evaluates the complete composite. Its first feedback point starts at the
-  exact frame center.
+- **VLM Point** asks the selected vision model for a salient coordinate within
+  the latest generated frame after each generation. Its first feedback point
+  starts at the exact frame center.
 - **VLM Guide** uses the selected vision model to define the next COM frame
   across the complete canvas. **Rotate** pairs that framing with normal
   weighted prompt rotation. With **Prompt context** off, Guide chooses the
@@ -67,7 +66,11 @@ History to 0 to disable continuity.
 Heatmap style is shared across modes. Size, jitter, speed, trail, and
 event-history settings are remembered per mode. Mode-specific controls live
 under the Tracking cog; VLM driver prompts and Next action remain directly
-visible when VLM is selected.
+visible when VLM is selected. Guide positions its working frame through Pull,
+making COM framing intrinsic; the COM control is therefore shown active and
+locked while Guide is selected. Composite remains an independent choice: when
+enabled, Guide sees the accumulated canvas; when disabled, each result replaces
+it and the next decision operates on that patch.
 
 ## Prompting
 
@@ -189,7 +192,7 @@ active boundary is clipped rather than shifting the generated patch inward.
 Advanced contains automatic download/clear intervals, canvas limits, the VLM
 model, and WebGazer calibration-cache controls. A model-specific effort menu
 appears beside a vision model that supports thinking. The Tracking cog contains
-VLM behavior, scope, Guide prompt choice, and history. Editable driver
+VLM behavior, Guide prompt choice, and history. Editable driver
 instructions and Compose/Hybrid's Next action remain visible below Mode when
 VLM is selected.
 

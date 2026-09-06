@@ -32,7 +32,6 @@ import {
   type TrackingMode,
   type VLMBehavior,
   type VLMGuidePromptChoice,
-  type VLMScope,
 } from "../store";
 import { compositeStore } from "../canvas/CompositeStore";
 import { pullHandle } from "../canvas/pullHandle";
@@ -102,11 +101,6 @@ const HEATMAP_STYLE_OPTIONS: ReadonlyArray<{
   { value: "classic", label: "Blackbody" },
   { value: "grayscale", label: "Grayscale" },
   { value: "spectral", label: "Spectral" },
-];
-
-const VLM_SCOPE_OPTIONS: ReadonlyArray<{ value: VLMScope; label: string }> = [
-  { value: "frame", label: "Frame" },
-  { value: "canvas", label: "Canvas" },
 ];
 
 const VLM_BEHAVIOR_OPTIONS: ReadonlyArray<{
@@ -846,14 +840,6 @@ export function ControlPanel({
                 />
               </>
             )}
-            {s.vlmBehavior === "point" && (
-              <Dropdown<VLMScope>
-                label="VLM scope"
-                value={s.vlmScope}
-                options={VLM_SCOPE_OPTIONS}
-                onChange={(v) => s.set("vlmScope", v)}
-              />
-            )}
           </>
         )}
         {/* Speed only applies to the synthetic roamers (roam / roam2) —
@@ -1544,8 +1530,13 @@ export function ControlPanel({
             />
             <Toggle
               label="COM"
-              checked={s.comMode}
+              checked={
+                s.trackingMode === "vlm" && s.vlmBehavior === "guide"
+                  ? true
+                  : s.comMode
+              }
               onChange={(v) => s.set("comMode", v)}
+              disabled={s.trackingMode === "vlm" && s.vlmBehavior === "guide"}
             />
           </div>
           <Toggle
