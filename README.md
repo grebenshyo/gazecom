@@ -15,7 +15,7 @@ gazeCOM connects to [ComfyUI](https://github.com/comfyanonymous/ComfyUI) for
 image generation and to [Ollama](https://ollama.com/) for language and vision
 models.
 
-> Current version: v0.4.0
+> Current version: v0.4.1
 
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
@@ -129,7 +129,7 @@ Guide provides four prompt strategies:
 
 | Strategy | Function |
 |---|---|
-| **Rotate** | Rotates prompts by normalized weight; optional pool context shows the VLM which prompts are shaping the image |
+| **Rotate** | Rotates prompts by normalized weight; optional prompt context lets the VLM place the fully processed prompt selected for that generation |
 | **Select** | Lets the VLM choose one unmuted prompt from the pool, independent of weight |
 | **Compose** | Lets the VLM write a new generation prompt |
 | **Hybrid** | Lets the VLM choose between a pool prompt and a newly written prompt |
