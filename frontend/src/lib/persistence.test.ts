@@ -171,7 +171,7 @@ describe("settings files", () => {
     ).toThrow('Invalid value for setting "vlmGuidePromptChoice".');
   });
 
-  it("rejects a non-boolean Rotate pool-context setting", () => {
+  it("rejects a non-boolean Rotate prompt-context setting", () => {
     expect(() =>
       applySettingsFile({
         format: "gazeCOM-settings",

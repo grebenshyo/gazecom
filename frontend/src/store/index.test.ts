@@ -105,7 +105,7 @@ describe("useStore — actions", () => {
     });
   });
 
-  it("starts a new Guide conversation when Rotate pool context changes", async () => {
+  it("starts a new Guide conversation when Rotate prompt context changes", async () => {
     const {
       DEFAULT_VLM_GUIDE_PROMPT,
       VLM_ROTATE_POOL_CONTEXT_BLOCK,

@@ -212,17 +212,19 @@ selected value is sent explicitly with every relevant request.
 
 VLM Guide is orchestrated by `generation/pipeline.ts`. Before each generation it
 requests a structured canvas decision and moves Pull there. Rotate resolves text
-through the normal weighted prompt pool. Its optional Pool context setting
-inserts a visible context block containing `{prompt_pool}` into the persisted
-editable Rotate prompt. At request time that placeholder expands to positive,
-unmuted prompt sources and normalized probabilities; no additional instruction
-is injected. Rotate still returns coordinates only and leaves downstream random
-selection unchanged. Select expands `{prompt_pool}` inside its persisted editable
-prompt, asks for a valid candidate ID, and executes that exact prompt snapshot
-through the selected slot's normal transforms. Compose uses a newly authored
-instruction. Hybrid makes one structured request that either selects an eligible
-prompt without rewriting it or writes a complete standalone prompt, optionally
-drawing on concepts exposed in the pool. Select and Hybrid ignore weights and
+through the normal weighted prompt pool. With Prompt context disabled, its next
+coordinate can be prepared independently of the following weighted selection.
+With Prompt context enabled, Rotate instead selects and freezes a slot first,
+resolves placeholders and automatic LLM/VLM transforms, expands the visible
+`{selected_prompt}` placeholder with that final text, and only then requests its
+coordinate. Pre-placement VLM prompting reads the complete current composite;
+generation reuses the same processed prompt without selecting or transforming it
+again. Select expands `{prompt_pool}` inside its persisted editable prompt, asks
+for a valid candidate ID, and executes that exact prompt snapshot through the
+selected slot's normal transforms. Compose uses a newly authored instruction.
+Hybrid makes one structured request that either selects an eligible prompt
+without rewriting it or writes a complete standalone prompt, optionally drawing
+on concepts exposed in the pool. Select and Hybrid ignore weights and
 use mute as candidate membership; hidden weights remain untouched. Hybrid may
 write even when no candidates are available.
 
@@ -256,7 +258,7 @@ anchor through every composite coordinate shift. All policies retain natural
 COM placement and clip overflow instead of sliding patches inward. Pending
 decisions, history, and prepared-workspace readiness are transient, while the
 editable Point, Rotate, Select, Compose, and Hybrid instruction templates and
-Rotate's Pool context and Guide visual-memory settings persist independently.
+Rotate's Prompt context and Guide visual-memory settings persist independently.
 
 ## Lineage
 

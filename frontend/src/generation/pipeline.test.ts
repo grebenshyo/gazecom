@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildRotatePromptContext,
   buildSelectPromptCandidates,
   inputKindFor,
   pullPositionForCanvasPoint,
@@ -110,61 +109,43 @@ describe("renderGuidePrompt", () => {
 });
 
 describe("renderRotatePrompt", () => {
-  const slots = [
-    { text: "red structure", weight: 1, height: null },
-    { text: "muted detail", weight: 10, height: null, muted: true },
-    { text: "zero influence", weight: 0, height: null },
-    { text: "blue atmosphere", weight: 3, height: null },
-  ];
-
-  it("builds context from positive, unmuted slots with normalized weights", () => {
-    expect(buildRotatePromptContext(slots)).toEqual([
-      { probability: 0.25, prompt: "red structure" },
-      { probability: 0.75, prompt: "blue atmosphere" },
-    ]);
-  });
-
-  it("expands the visible pool placeholder without adding hidden instructions", () => {
+  it("inserts the exact processed prompt used for this generation", () => {
     const prompt = renderRotatePrompt(
-      "Use these only as placement context:\n{prompt_pool}\n\n" +
+      "Place this generation prompt:\n{selected_prompt}\n\n" +
         "Choose coordinates for a {crop_size} crop.",
-      slots,
+      "paint a blue atmosphere around the red structure",
       true,
       { width: 2048, height: 2048 },
       { enabled: true, width: 2048, height: 2048 },
     );
 
     expect(prompt).toContain("Choose coordinates for a 1024 crop.");
-    expect(prompt).toContain("Use these only as placement context:");
-    expect(prompt).toContain('"probability": 0.25');
-    expect(prompt).toContain('"prompt": "red structure"');
-    expect(prompt).toContain('"probability": 0.75');
-    expect(prompt).toContain('"prompt": "blue atmosphere"');
-    expect(prompt).not.toContain("muted detail");
-    expect(prompt).not.toContain("zero influence");
-    expect(prompt).not.toContain('"id"');
-    expect(prompt.indexOf('"probability": 0.25')).toBeLessThan(
+    expect(prompt).toContain("Place this generation prompt:");
+    expect(prompt).toContain(
+      "paint a blue atmosphere around the red structure",
+    );
+    expect(prompt.indexOf("paint a blue atmosphere")).toBeLessThan(
       prompt.indexOf("Choose coordinates"),
     );
   });
 
-  it("rejects hidden Rotate context without a visible placeholder", () => {
+  it("rejects prompt context without a visible placeholder", () => {
     expect(() =>
       renderRotatePrompt(
         "Choose coordinates for a {crop_size} crop.",
-        slots,
+        "processed prompt",
         true,
         { width: 2048, height: 2048 },
         { enabled: true, width: 2048, height: 2048 },
       ),
-    ).toThrow('requires the "{prompt_pool}" placeholder');
+    ).toThrow('requires the "{selected_prompt}" placeholder');
   });
 
   it("leaves the normal Guide prompt unchanged when context is disabled", () => {
     expect(
       renderRotatePrompt(
         "Choose coordinates for a {crop_size} crop.",
-        slots,
+        undefined,
         false,
         { width: 2048, height: 2048 },
         { enabled: true, width: 2048, height: 2048 },
@@ -172,16 +153,28 @@ describe("renderRotatePrompt", () => {
     ).toBe("Choose coordinates for a 1024 crop.");
   });
 
-  it("renders an empty visible pool when substitution is disabled", () => {
+  it("removes the visible selected-prompt placeholder when disabled", () => {
     expect(
       renderRotatePrompt(
-        "Context: {prompt_pool}\nChoose coordinates.",
-        slots,
+        "Context: {selected_prompt}\nChoose coordinates.",
+        undefined,
         false,
         { width: 2048, height: 2048 },
         { enabled: true, width: 2048, height: 2048 },
       ),
-    ).toBe("Context: []\nChoose coordinates.");
+    ).toBe("Context: \nChoose coordinates.");
+  });
+
+  it("accepts the former pool placeholder as a settings-file fallback", () => {
+    expect(
+      renderRotatePrompt(
+        "Selected: {prompt_pool}",
+        "processed prompt",
+        true,
+        { width: 2048, height: 2048 },
+        { enabled: true, width: 2048, height: 2048 },
+      ),
+    ).toBe("Selected: processed prompt");
   });
 });
 

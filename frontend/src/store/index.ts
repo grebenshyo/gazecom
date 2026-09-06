@@ -102,11 +102,16 @@ export const DEFAULT_VLM_GUIDE_PROMPT =
   "{canvas_limit} Return only strict JSON using a 0-1000 coordinate grid: " +
   '{"x": <0-1000>, "y": <0-1000>}. No explanation, no other text.';
 
-export const VLM_ROTATE_POOL_CONTEXT_BLOCK =
+const LEGACY_VLM_ROTATE_POOL_CONTEXT_BLOCK =
   "The following active weighted prompts collectively shape the image. " +
   "You do not choose a prompt; another process selects one after you choose " +
   "the coordinate. Use this pool only as context for deciding which area is " +
   "most relevant to work on next.\n\nPrompt pool:\n{prompt_pool}";
+
+export const VLM_ROTATE_POOL_CONTEXT_BLOCK =
+  "The following prompt has already been selected and fully processed for " +
+  "this generation. Choose the crop location where applying it would be most " +
+  "relevant.\n\nGeneration prompt:\n{selected_prompt}";
 
 export const VLM_GUIDE_VISUAL_MEMORY_BLOCK =
   "When two canvas images are attached, the first is the previous canvas " +
@@ -135,8 +140,22 @@ export function toggleVlmRotatePoolContextPrompt(
   prompt: string,
   enabled: boolean,
 ): string {
-  if (enabled && prompt.includes("{prompt_pool}")) return prompt;
-  return togglePromptBlock(prompt, VLM_ROTATE_POOL_CONTEXT_BLOCK, enabled);
+  const normalized = prompt.replace(
+    LEGACY_VLM_ROTATE_POOL_CONTEXT_BLOCK,
+    VLM_ROTATE_POOL_CONTEXT_BLOCK,
+  );
+  if (
+    enabled &&
+    (normalized.includes("{selected_prompt}") ||
+      normalized.includes("{prompt_pool}"))
+  ) {
+    return normalized;
+  }
+  return togglePromptBlock(
+    normalized,
+    VLM_ROTATE_POOL_CONTEXT_BLOCK,
+    enabled,
+  );
 }
 
 export function toggleVlmGuideVisualMemoryPrompt(
@@ -247,7 +266,7 @@ export interface AppState {
   vlmBehavior: VLMBehavior;
   /** Guide prompt strategy: rotate, select, compose, or combine both sources. */
   vlmGuidePromptChoice: VLMGuidePromptChoice;
-  /** Let Rotate use the active weighted prompt pool as placement context. */
+  /** Let Rotate place the fully processed prompt selected for this turn. */
   vlmRotatePoolContext: boolean;
   /** Send the previous canvas beside the current canvas in Guide requests. */
   vlmGuideVisualMemory: boolean;

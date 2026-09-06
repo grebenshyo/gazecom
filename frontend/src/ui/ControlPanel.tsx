@@ -822,7 +822,7 @@ export function ControlPanel({
                 />
                 {s.vlmGuidePromptChoice === "rotate" && (
                   <Toggle
-                    label="Pool context"
+                    label="Prompt context"
                     checked={s.vlmRotatePoolContext}
                     onChange={(v) => s.set("vlmRotatePoolContext", v)}
                   />
@@ -921,9 +921,15 @@ export function ControlPanel({
                 s.vlmRotatePoolContext) ||
                 s.vlmGuidePromptChoice === "select" ||
                 s.vlmGuidePromptChoice === "hybrid") &&
-              !vlmPromptConfig.value.includes("{prompt_pool}") && (
+              !(s.vlmGuidePromptChoice === "rotate"
+                ? vlmPromptConfig.value.includes("{selected_prompt}") ||
+                  vlmPromptConfig.value.includes("{prompt_pool}")
+                : vlmPromptConfig.value.includes("{prompt_pool}")) && (
                 <p className="gz-pool-warning">
-                  {vlmPromptConfig.label} requires the {"{prompt_pool}"}{" "}
+                  {vlmPromptConfig.label} requires the{" "}
+                  {s.vlmGuidePromptChoice === "rotate"
+                    ? "{selected_prompt}"
+                    : "{prompt_pool}"}{" "}
                   placeholder.
                 </p>
               )}

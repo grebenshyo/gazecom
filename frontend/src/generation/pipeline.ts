@@ -171,14 +171,57 @@ export async function generateOnce(
   try {
     await prepareCanvasForGeneration(canvasVlmActive);
 
-    // 2. Resolve canvas guidance, then the generation prompt.
-    //   Guide chooses the next Pull location from the complete canvas. Rotate
-    //   uses the weighted pool, Select carries an exact pool choice, Compose
-    //   writes the prompt, and Hybrid chooses between the latter two.
-    //   Resolve the location first so the prompt is selected from fresh state
-    //   after the potentially slow VLM request.
+    // 2. Resolve canvas guidance and the generation prompt. Contextual Rotate
+    //   deliberately reverses the normal Guide order: select and fully process
+    //   one prompt first, then let Guide place that exact frozen prompt.
+    const initialPromptChoice = useStore.getState().vlmGuidePromptChoice;
+    const contextualRotate =
+      canvasVlmActive &&
+      initialPromptChoice === "rotate" &&
+      useStore.getState().vlmRotatePoolContext;
+    let resolvedRotatePrompt: string | undefined;
+    if (contextualRotate) {
+      const promptState = useStore.getState();
+      const pickedPrompt = pickPromptSlot(promptState.pinnedPrompts);
+      if (!pickedPrompt) {
+        promptState.set("lastPickedPromptIndex", null);
+        throw new Error("Unmute a prompt slot or give one a weight above 0.");
+      }
+      const canvas = compositeStore.getCanvas();
+      if (!canvas) {
+        throw new Error("VLM Guide requires an active canvas.");
+      }
+      resolvedRotatePrompt = await resolvePickedPrompt(
+        ctx,
+        promptState,
+        useCOM,
+        pickedPrompt,
+        false,
+        signal,
+        canvas,
+      );
+      const live = useStore.getState();
+      if (
+        live.trackingMode !== "vlm" ||
+        live.vlmBehavior !== "guide" ||
+        live.vlmGuidePromptChoice !== "rotate" ||
+        !live.vlmRotatePoolContext ||
+        !live.trackingActive
+      ) {
+        return;
+      }
+    }
+
+    //   Guide chooses the next Pull location from the complete canvas. Select
+    //   carries an exact pool choice, Compose writes the prompt, and Hybrid
+    //   chooses between the latter two.
     if (canvasVlmActive) {
-      const ready = await ensureCanvasAction(signal, myEpoch);
+      const ready = await ensureCanvasAction(
+        signal,
+        myEpoch,
+        0,
+        resolvedRotatePrompt,
+      );
       if (!ready) return;
     }
 
@@ -207,7 +250,9 @@ export async function generateOnce(
         authoredAction !== null &&
         isHybridAction(authoredAction) &&
         authoredAction.hybridSource === "write");
-    if (usesAuthoredPrompt) {
+    if (resolvedRotatePrompt !== undefined) {
+      prompt = resolvedRotatePrompt;
+    } else if (usesAuthoredPrompt) {
       useStore.getState().set("lastPickedPromptIndex", null);
       if (!authoredAction?.instruction.trim()) {
         throw new Error("VLM Compose did not provide an edit instruction.");
@@ -243,34 +288,14 @@ export async function generateOnce(
               : "Unmute a prompt slot or give one a weight above 0.",
         );
       }
-      const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
-      const visionEnabled = promptSlotVisionEnabled(slot);
-      const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
-      // Select candidates are placeholder-resolved before the VLM evaluates
-      // them, so generation must use that exact snapshot. Rotate resolves only
-      // the slot it picked, preserving its existing behavior.
-      prompt = selectedByVlm
-        ? pickedPrompt.text
-        : replaceAllPlaceholders(pickedPrompt.text);
-      useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
-      prompt = await resolvePromptTransforms(
-        prompt,
-        visionEnabled,
-        (text) => maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
-        (text) =>
-          maybeDescribeVisionPrompt(
-            ctx,
-            promptState,
-            useCOM,
-            text,
-            pickedPrompt.index,
-            signal,
-          ),
-        autoEnhanceMode === "off"
-          ? undefined
-          : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
+      prompt = await resolvePickedPrompt(
+        ctx,
+        promptState,
+        useCOM,
+        pickedPrompt,
+        selectedByVlm,
+        signal,
       );
-      syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
       if (selectedByVlm) {
         const pending = useStore.getState().vlmGuideAction;
         if (pending && isSelectAction(pending)) {
@@ -416,6 +441,46 @@ export async function resolvePromptTransforms(
   return describe(enhanced);
 }
 
+async function resolvePickedPrompt(
+  ctx: PipelineCtx,
+  promptState: ReturnType<typeof useStore.getState>,
+  useCOM: boolean,
+  pickedPrompt: { text: string; index: number },
+  selectedByVlm: boolean,
+  signal?: AbortSignal,
+  prePlacementCanvas?: HTMLCanvasElement,
+): Promise<string> {
+  const slot = useStore.getState().pinnedPrompts[pickedPrompt.index];
+  const visionEnabled = promptSlotVisionEnabled(slot);
+  const autoEnhanceMode = promptSlotAutoEnhanceMode(slot);
+  // Select candidates are placeholder-resolved before the VLM evaluates them,
+  // while weighted rotation resolves only the frozen slot it picked.
+  let prompt = selectedByVlm
+    ? pickedPrompt.text
+    : replaceAllPlaceholders(pickedPrompt.text);
+  useStore.getState().set("lastPickedPromptIndex", pickedPrompt.index);
+  prompt = await resolvePromptTransforms(
+    prompt,
+    visionEnabled,
+    (text) => maybeAutoEnhancePrompt(text, pickedPrompt.index, signal),
+    (text) =>
+      maybeDescribeVisionPrompt(
+        ctx,
+        promptState,
+        useCOM,
+        text,
+        pickedPrompt.index,
+        signal,
+        prePlacementCanvas,
+      ),
+    autoEnhanceMode === "off"
+      ? undefined
+      : (text) => syncDerivedPrompt(pickedPrompt.index, text, true),
+  );
+  syncDerivedPrompt(pickedPrompt.index, prompt, visionEnabled);
+  return prompt;
+}
+
 async function maybeAutoEnhancePrompt(
   prompt: string,
   slotIndex: number,
@@ -481,6 +546,7 @@ async function maybeDescribeVisionPrompt(
   prompt: string,
   slotIndex: number,
   signal?: AbortSignal,
+  prePlacementCanvas?: HTMLCanvasElement,
 ): Promise<string> {
   if (!promptSlotVisionEnabled(useStore.getState().pinnedPrompts[slotIndex])) {
     return prompt;
@@ -493,7 +559,9 @@ async function maybeDescribeVisionPrompt(
   if (!model.trim()) {
     throw new Error("Select a Vision model under Advanced.");
   }
-  const image = await buildVisionInput(ctx, state, useCOM);
+  const image = prePlacementCanvas
+    ? await captureVisionCanvas({ source: prePlacementCanvas })
+    : await buildVisionInput(ctx, state, useCOM);
   const live = useStore.getState();
   const described = await new OllamaVLMProvider(
     model,
@@ -532,9 +600,16 @@ async function ensureCanvasAction(
   signal?: AbortSignal,
   myEpoch?: number,
   staleRetry = 0,
+  rotatePromptContext?: string,
 ): Promise<boolean> {
   const pending = useStore.getState().vlmGuideAction;
-  if (pending && pendingActionMatchesState(pending)) return true;
+  if (
+    rotatePromptContext === undefined &&
+    pending &&
+    pendingActionMatchesState(pending)
+  ) {
+    return true;
+  }
   if (pending) useStore.getState().set("vlmGuideAction", null);
   if (signal?.aborted) {
     throw new DOMException(
@@ -551,7 +626,12 @@ async function ensureCanvasAction(
   const behavior = useStore.getState().vlmBehavior;
   if (behavior === "point") return false;
   const guidePromptChoice = useStore.getState().vlmGuidePromptChoice;
-  const result = await requestGuideDecision(canvas, guidePromptChoice, signal);
+  const result = await requestGuideDecision(
+    canvas,
+    guidePromptChoice,
+    signal,
+    rotatePromptContext,
+  );
   const action = result.action;
   if (signal?.aborted) {
     throw new DOMException(
@@ -575,7 +655,12 @@ async function ensureCanvasAction(
         "Guide prompt pool changed repeatedly during its decision.",
       );
     }
-    return ensureCanvasAction(signal, myEpoch, staleRetry + 1);
+    return ensureCanvasAction(
+      signal,
+      myEpoch,
+      staleRetry + 1,
+      rotatePromptContext,
+    );
   }
   await applyGuideDecision(
     action,
@@ -719,48 +804,36 @@ export function renderGuidePrompt(
     .replaceAll("{canvas_limit}", canvasLimit);
 }
 
-export interface VLMRotatePromptContextEntry {
-  probability: number;
-  prompt: string;
-}
-
-export function buildRotatePromptContext(
-  slots: PromptSlots,
-): VLMRotatePromptContextEntry[] {
-  const active = slots.filter(
-    (slot) => !promptSlotMuted(slot) && slot.weight > 0,
-  );
-  const total = active.reduce((sum, slot) => sum + slot.weight, 0);
-  if (total <= 0) return [];
-
-  return active.map((slot) => ({
-    probability: Math.round((slot.weight / total) * 1_000_000) / 1_000_000,
-    prompt: slot.text,
-  }));
-}
-
 export function renderRotatePrompt(
   template: string,
-  slots: PromptSlots,
-  includePoolContext: boolean,
+  selectedPrompt: string | undefined,
+  includePromptContext: boolean,
   canvasSize: { width: number; height: number },
   bounds: { enabled: boolean; width: number; height: number },
 ): string {
   const prompt = renderGuidePrompt(template, canvasSize, bounds);
-  if (!includePoolContext) {
-    return prompt.replaceAll("{prompt_pool}", "[]");
+  if (!includePromptContext) {
+    return prompt
+      .replaceAll("{selected_prompt}", "")
+      .replaceAll("{prompt_pool}", "[]");
   }
-  if (!prompt.includes("{prompt_pool}")) {
+  if (
+    !prompt.includes("{selected_prompt}") &&
+    !prompt.includes("{prompt_pool}")
+  ) {
     throw new Error(
-      'Rotate pool context requires the "{prompt_pool}" placeholder.',
+      'Rotate prompt context requires the "{selected_prompt}" placeholder.',
+    );
+  }
+  if (selectedPrompt === undefined) {
+    throw new Error(
+      "Rotate prompt context requires a processed generation prompt.",
     );
   }
 
-  const context = JSON.stringify(buildRotatePromptContext(slots), null, 2);
-  return prompt.replaceAll(
-    "{prompt_pool}",
-    context,
-  );
+  return prompt
+    .replaceAll("{selected_prompt}", selectedPrompt)
+    .replaceAll("{prompt_pool}", selectedPrompt);
 }
 
 export interface VLMSelectPromptCandidate {
@@ -822,6 +895,7 @@ async function requestGuideDecision(
   canvas: HTMLCanvasElement,
   choice: VLMGuidePromptChoice,
   signal?: AbortSignal,
+  rotatePromptContext?: string,
 ): Promise<{ action: VLMCanvasAction; observedCanvas: Blob }> {
   const live = useStore.getState();
   if (!live.vlmModel.trim()) {
@@ -856,7 +930,7 @@ async function requestGuideDecision(
     choice === "rotate"
       ? renderRotatePrompt(
           template,
-          live.pinnedPrompts,
+          rotatePromptContext,
           live.vlmRotatePoolContext,
           canvasSize,
           bounds,
@@ -1160,6 +1234,9 @@ async function maybeUpdateVlmTracking(
 
   if (live.vlmBehavior !== "point") {
     const guidePromptChoice = live.vlmGuidePromptChoice;
+    // Contextual Rotate cannot choose the next location until the next turn's
+    // weighted prompt has been selected and fully processed.
+    if (guidePromptChoice === "rotate" && live.vlmRotatePoolContext) return;
     const canvas = compositeStore.getCanvas();
     if (!canvas) {
       throw new Error("VLM Guide requires an active composite.");

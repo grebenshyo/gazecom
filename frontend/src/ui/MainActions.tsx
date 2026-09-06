@@ -82,6 +82,7 @@ export function MainActions({
       vlmGuidePromptChoice === "rotate" &&
       vlmRotatePoolContext
     ) ||
+      vlmGuidePrompt.includes("{selected_prompt}") ||
       vlmGuidePrompt.includes("{prompt_pool}")) &&
     (!guideSelectsPrompt || vlmSelectPrompt.includes("{prompt_pool}")) &&
     (!guideUsesHybridPrompt || vlmHybridPrompt.includes("{prompt_pool}"));
@@ -198,13 +199,11 @@ export function MainActions({
                     ? "Unmute at least one prompt slot for Guide Select"
                     : "Unmute a prompt slot or give one a weight above 0"
                   : !poolTemplateReady
-                    ? `Add {prompt_pool} to the ${
-                        vlmGuidePromptChoice === "rotate"
-                          ? "Guide"
-                          : guideUsesHybridPrompt
-                            ? "Hybrid"
-                            : "Select"
-                      } prompt`
+                    ? vlmGuidePromptChoice === "rotate"
+                      ? "Add {selected_prompt} to the Guide prompt"
+                      : `Add {prompt_pool} to the ${
+                          guideUsesHybridPrompt ? "Hybrid" : "Select"
+                        } prompt`
                   : undefined
         }
       >

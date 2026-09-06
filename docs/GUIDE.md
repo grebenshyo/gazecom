@@ -34,12 +34,16 @@ placed.
   exact frame center.
 - **VLM Guide** uses the selected vision model to define the next COM frame
   across the complete canvas. **Rotate** pairs that framing with normal
-  weighted prompt rotation. Its optional **Pool context** toggle adds an
-  editable `{prompt_pool}` block to the Guide prompt. The block expands to the
-  active prompts and normalized probabilities without letting Guide choose
-  one. **Select** asks the VLM to choose one unmuted prompt slot together with
-  the coordinate. Its editable Select prompt must contain `{prompt_pool}`,
-  which expands visibly into the numbered candidates sent to the model.
+  weighted prompt rotation. With **Prompt context** off, Guide chooses the
+  location from the canvas without knowing which prompt Rotate will select;
+  the prompt is selected and processed afterward. With **Prompt context** on,
+  Rotate first selects and fully processes one prompt, then exposes it through
+  the editable `{selected_prompt}` block so Guide can place that exact prompt.
+  A vision-enabled prompt is processed against the complete current composite
+  before placement. **Select** asks the VLM to choose one unmuted prompt slot
+  together with the coordinate. Its editable Select prompt must contain
+  `{prompt_pool}`, which expands visibly into the numbered candidates sent to
+  the model.
 - Guide **Compose** chooses both the location and a new image-editing
   instruction. **Hybrid** chooses per step whether to select one pool prompt
   without rewriting it or write its own complete prompt, which may adapt or
