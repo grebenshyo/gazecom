@@ -9,6 +9,7 @@ import {
   renderRotatePrompt,
   resolveInputCOM,
   resolvePromptTransforms,
+  workflowNeedsOpaqueInput,
 } from "./pipeline";
 
 describe("inputKindFor", () => {
@@ -22,6 +23,14 @@ describe("inputKindFor", () => {
     expect(inputKindFor("standard", false)).toBe("heatmap-base");
     expect(inputKindFor("inpainting", false)).toBe("inpaint-mask");
     expect(inputKindFor("edit", false)).toBe("plain-base");
+  });
+});
+
+describe("workflowNeedsOpaqueInput", () => {
+  it("forces standard and edit inputs opaque but preserves inpainting alpha", () => {
+    expect(workflowNeedsOpaqueInput("standard")).toBe(true);
+    expect(workflowNeedsOpaqueInput("edit")).toBe(true);
+    expect(workflowNeedsOpaqueInput("inpainting")).toBe(false);
   });
 });
 

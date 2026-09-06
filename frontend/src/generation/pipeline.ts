@@ -1450,6 +1450,10 @@ export function inputKindFor(
   return "heatmap-base";
 }
 
+export function workflowNeedsOpaqueInput(workflowType: WorkflowType): boolean {
+  return workflowType === "standard" || workflowType === "edit";
+}
+
 export function resolveInputCOM(params: {
   trackingMode: TrackingMode;
   vlmPoint: { x: number; y: number } | null;
@@ -1519,12 +1523,7 @@ async function buildInput(
           heatmap,
         });
 
-    // Standard/edit pipelines are img2img/image-conditioning inputs, not
-    // alpha-mask inputs. Flatten transparent crop edges onto the visible frame
-    // background so Comfy doesn't interpret missing pixels as black.
-    if (workflowType === "standard" || workflowType === "edit") {
-      cropBlob = await flattenAlphaOnBg(cropBlob);
-    }
+    cropBlob = await finalizeWorkflowInput(cropBlob, workflowType);
 
     // Input preview (legacy image-processor.js:486-494): when feedback is
     // on, show the cropped 1024² region as the heatmap pane's background
@@ -1541,18 +1540,35 @@ async function buildInput(
   }
 
   if (inputKind === "inpaint-mask") {
-    return buildInpaintingMask({
+    const input = await buildInpaintingMask({
       baseImageURL: state.baseImageURL,
       heatmap,
     });
+    return finalizeWorkflowInput(input, workflowType);
   }
 
   if (inputKind === "plain-base") {
-    return captureBasePatch({ baseImageURL: state.baseImageURL });
+    const input = await captureBasePatch({ baseImageURL: state.baseImageURL });
+    return finalizeWorkflowInput(input, workflowType);
   }
 
   // Standard, non-COM: capture base + heatmap.
-  return captureHeatmapOnBase({ baseImageURL: state.baseImageURL, heatmap });
+  const input = await captureHeatmapOnBase({
+    baseImageURL: state.baseImageURL,
+    heatmap,
+  });
+  return finalizeWorkflowInput(input, workflowType);
+}
+
+async function finalizeWorkflowInput(
+  input: Blob,
+  workflowType: WorkflowType,
+): Promise<Blob> {
+  // Standard and edit workflows consume RGB image conditioning. Inpainting is
+  // the only category whose alpha channel is part of the workflow contract.
+  return workflowNeedsOpaqueInput(workflowType)
+    ? flattenAlphaOnBg(input)
+    : input;
 }
 
 async function applyResult(
