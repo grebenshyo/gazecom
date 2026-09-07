@@ -17,6 +17,8 @@ models.
 
 > Current version: v0.4.4
 
+![gazeCOM cover](assets/gazecom.png)
+
 ![gazeCOM interface panels for tracking, prompting, workflows, settings, and canvas controls](assets/gazecom-panels.jpg)
 
 [Install](#install) · [Quick start](#quick-start) ·
