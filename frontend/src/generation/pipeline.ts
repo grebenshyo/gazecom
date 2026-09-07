@@ -13,7 +13,7 @@
  *      - in-/outpainting w/o COM: base image + alpha mask
  *      - edit w/ COM: crop master composite around COM, flattened to bg
  *      - edit w/o COM: plain current base patch
- *      - standard w/ COM: crop master composite around COM (no mask)
+ *      - standard w/ COM: crop master composite + spatially aligned heatmap
  *      - standard w/o COM: capture base + heatmap onto canvas
  *   4. POST /api/generate
  *   5. Composite the result onto the canvas using planComposite()
@@ -1514,6 +1514,7 @@ async function buildInput(
           centerY,
           applyHeatmapMask: workflowType === "inpainting",
           heatmap,
+          heatmapOverlayBounds: workflowType === "standard" ? pos : undefined,
         })
       : await cropAroundPoint({
           imageURL: state.baseImageURL,
@@ -1521,6 +1522,7 @@ async function buildInput(
           centerY,
           applyHeatmapMask: workflowType === "inpainting",
           heatmap,
+          heatmapOverlayBounds: workflowType === "standard" ? pos : undefined,
         });
 
     cropBlob = await finalizeWorkflowInput(cropBlob, workflowType);

@@ -160,7 +160,7 @@ In-/outpaint are retained as legacy workflow types.
 
 | Type | COM off | COM on |
 |---|---|---|
-| **IMG** | Base image with the heatmap visibly overlaid | Opaque composite crop centered on COM |
+| **IMG** | Base image with the heatmap visibly overlaid | Opaque composite crop centered on COM, with the heatmap aligned and overlaid |
 | **Edit** | Plain base image | Opaque composite crop centered on COM |
 | **In-/outpaint** | Base image with a heatmap-derived alpha mask | COM crop with a heatmap-derived alpha mask |
 

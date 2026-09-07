@@ -44,12 +44,15 @@ The category determines how gazeCOM prepares the PNG assigned to
 
 | Category | UI label | COM off | COM on |
 |---|---|---|---|
-| `img/` | **IMG** | Current image with the visible heatmap composited over it | Opaque 1024 x 1024 composite crop centered on COM |
+| `img/` | **IMG** | Current image with the visible heatmap composited over it | Opaque 1024 x 1024 composite crop centered on COM, with the heatmap spatially aligned and overlaid |
 | `edit/` | **Edit** | Plain current image without heatmap or alpha mask | Opaque 1024 x 1024 composite crop centered on COM |
 | `inpainting/` | **In-/outpaint** | Current image with the heatmap removed from the alpha channel | 1024 x 1024 COM crop with the heatmap removed from the alpha channel |
 
 With COM enabled, every category uses the same spatial crop window. The
 category controls only how that crop is prepared for the selected model.
+For IMG, the heatmap moves with its reference image into the crop; marks
+outside the crop are clipped. Guide uses its pulled patch with the heatmap
+overlaid in that patch's coordinates.
 
 IMG and Edit inputs are flattened onto the visible frame background and sent
 as opaque PNGs. Empty areas use the current theme color by default, or the

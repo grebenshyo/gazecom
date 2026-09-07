@@ -127,8 +127,8 @@ The picker groups valid API workflows by category and color: **IMG**, **Edit**,
 and **In-/outpaint**. Entries are alphabetical; selected workflows and their
 pool weights remain visible in the panel.
 
-- **IMG** uses the whole image plus heatmap when COM is off, or a 1024 x 1024
-  COM crop when it is on.
+- **IMG** overlays the heatmap on the current image, or on a 1024 x 1024 COM
+  crop, keeping its marks aligned with the image content.
 - **Edit** uses the plain current image or COM crop.
 - **In-/outpaint** also receives the heatmap-derived alpha mask.
 

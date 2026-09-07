@@ -12,6 +12,14 @@ import { useStore } from "../store";
 
 const TARGET = 1024;
 
+/** Placement of the heatmap's working patch in the crop source's coordinates. */
+interface HeatmapOverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Draw the base image at 0,0 (cover-fitted to TARGET×TARGET) and overlay
  * the heatmap canvas on top. If the heatmap matte is enabled, flatten
@@ -121,16 +129,15 @@ export async function cropAroundPoint(args: {
   /** Whether to overlay the heatmap as an alpha mask (in-/outpainting + COM). */
   applyHeatmapMask?: boolean;
   heatmap?: HeatmapInstance;
+  /** Draw a visible heatmap overlay aligned with this working patch. */
+  heatmapOverlayBounds?: HeatmapOverlayBounds;
 }): Promise<Blob> {
-  const { imageURL, centerX, centerY, applyHeatmapMask, heatmap } = args;
+  const { imageURL, ...cropOptions } = args;
 
   const src = await loadImage(imageURL);
   return cropAroundSource({
     source: src,
-    centerX,
-    centerY,
-    applyHeatmapMask,
-    heatmap,
+    ...cropOptions,
   });
 }
 
@@ -147,6 +154,8 @@ export async function cropAroundCanvasPoint(args: {
   /** Whether to overlay the heatmap as an alpha mask (in-/outpainting + COM). */
   applyHeatmapMask?: boolean;
   heatmap?: HeatmapInstance;
+  /** Draw a visible heatmap overlay aligned with this working patch. */
+  heatmapOverlayBounds?: HeatmapOverlayBounds;
 }): Promise<Blob> {
   return cropAroundSource(args);
 }
@@ -157,8 +166,11 @@ function cropAroundSource(args: {
   centerY: number;
   applyHeatmapMask?: boolean;
   heatmap?: HeatmapInstance;
+  heatmapOverlayBounds?: HeatmapOverlayBounds;
 }): Promise<Blob> {
-  const { source, centerX, centerY, applyHeatmapMask, heatmap } = args;
+  const {
+    source, centerX, centerY, applyHeatmapMask, heatmap, heatmapOverlayBounds,
+  } = args;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = TARGET;
@@ -168,6 +180,19 @@ function cropAroundSource(args: {
   const sx = centerX - TARGET / 2;
   const sy = centerY - TARGET / 2;
   ctx.drawImage(source, sx, sy, TARGET, TARGET, 0, 0, TARGET, TARGET);
+
+  if (heatmapOverlayBounds && heatmap && !applyHeatmapMask) {
+    const hmCanvas = heatmap.getCanvas();
+    if (hmCanvas && hmCanvas.width > 0 && hmCanvas.height > 0) {
+      const bounds = heatmapOverlayBounds;
+      // Move the heatmap with its reference image; the output canvas clips
+      // anything outside this crop without changing the source heatmap.
+      ctx.drawImage(
+        hmCanvas, 0, 0, hmCanvas.width, hmCanvas.height,
+        bounds.x - sx, bounds.y - sy, bounds.width, bounds.height,
+      );
+    }
+  }
 
   if (applyHeatmapMask && heatmap) {
     const hmCanvas = heatmap.getCanvas();
