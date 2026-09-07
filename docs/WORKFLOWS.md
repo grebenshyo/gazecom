@@ -54,6 +54,9 @@ For IMG, the heatmap moves with its reference image into the crop; marks
 outside the crop are clipped. Guide uses its pulled patch with the heatmap
 overlaid in that patch's coordinates.
 
+Edit inputs never include a heatmap overlay, including in VLM Point and Guide.
+The visible tracking marker is feedback only for Edit workflows.
+
 IMG and Edit inputs are flattened onto the visible frame background and sent
 as opaque PNGs. Empty areas use the current theme color by default, or the
 configured matte color when enabled. Only In-/outpaint uses the heatmap as an

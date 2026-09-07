@@ -1513,7 +1513,7 @@ async function buildInput(
           centerX,
           centerY,
           applyHeatmapMask: workflowType === "inpainting",
-          heatmap,
+          heatmap: workflowType === "edit" ? undefined : heatmap,
           heatmapOverlayBounds: workflowType === "standard" ? pos : undefined,
         })
       : await cropAroundPoint({
@@ -1521,7 +1521,7 @@ async function buildInput(
           centerX,
           centerY,
           applyHeatmapMask: workflowType === "inpainting",
-          heatmap,
+          heatmap: workflowType === "edit" ? undefined : heatmap,
           heatmapOverlayBounds: workflowType === "standard" ? pos : undefined,
         });
 

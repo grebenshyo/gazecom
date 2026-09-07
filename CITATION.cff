@@ -13,8 +13,8 @@ abstract: >-
   of this coordinate system.
 authors:
   - name: "grebenshyo"
-version: "0.4.3"
-date-released: 2026-09-06
+version: "0.4.4"
+date-released: 2026-09-07
 type: software
 license: MIT
 repository-code: "https://github.com/grebenshyo/gazecom"
